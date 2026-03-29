@@ -1,0 +1,295 @@
+/* --- إضافة: استايل العلامة المائية المركزية --- */
+body::before {
+    content: "";
+    position: fixed;
+    bottom: 2%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50%;
+    height: 50%;
+    background-image: url('https://i.ibb.co/KcS08Cxn/watermark.png'); /* رابط العلامة المائية (كما هو) */
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: contain;
+    opacity: 0.2;
+    z-index: -1;
+    pointer-events: none;
+}
+/* --- 1. استايل اللوجو المدمج --- */
+.bank-logo-container {
+    position: absolute;
+    top: -30px;
+    left: -10px;
+    width: 180px;
+    z-index: 100;
+}
+
+body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f8fff8; transition: background 0.3s, color 0.3s; }
+html { scroll-behavior: smooth; }
+.title { font-size: 36px; font-weight: bold; margin-bottom: 20px; color: #2e7d32; text-align: center; margin-top: 60px; }
+.search-box { position: relative; width: 300px; margin: 0 auto 15px auto; }
+.search-box input { width: 100%; padding: 8px 35px 8px 12px; border: 2px solid #2e7d32; border-radius: 20px; font-size: 14px; outline: none; background: white; }
+.search-box .icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+
+#searchHistoryBox { display: none; position: absolute; background: white; width: 100%; border: 2px solid #2e7d32; z-index: 20; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 0 0 15px 15px; overflow: hidden; }
+#searchHistoryBox div { padding: 8px 15px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px; color: #333; }
+#searchHistoryBox div:hover { background: #e8f5e9; }
+
+th { position: sticky; top: 0; z-index: 2; background: #2e7d32; color: white; }
+th .resizer { position: absolute; right: 0; top: 0; width: 5px; cursor: col-resize; user-select: none; height: 100%; }
+.mail-box { background: #fff; padding: 10px 15px; border: 2px solid #2e7d32; font-size: 14px; position: sticky; top: 40px; z-index: 3; cursor: pointer; transition: all 0.3s ease; }
+.mail-box.scrolled { box-shadow: 0 8px 16px rgba(0,0,0,0.2); transform: translateY(-2px); }
+button { margin: 4px; padding: 5px 10px; cursor: pointer; border: none; border-radius: 5px; background: #2e7d32; color: white; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+td, th { border: 1px solid #a5d6a7; padding: 8px; text-align: center; }
+.preview td { background: #f1f8e9; text-align: left; cursor: pointer; }
+.selected { background: #c8e6c9 !important; }
+tbody:hover tr { background: #d0f0c0; color: #1b5e20; transition: all 0.2s ease; }
+.star { cursor: pointer; font-size: 18px; }
+
+.dropdown { position: relative; display: inline-block; cursor: pointer; width: 100%; height: 100%; }
+.dropdown-content { display: none; position: absolute; background: white; min-width: 180px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: 100; border: 1px solid #2e7d32; border-radius: 5px; text-align: left; top: 100%; left: 0; }
+.dropdown-content .menu-search { width: 85%; margin: 8px auto; display: block; padding: 5px; border: 1px solid #a5d6a7; border-radius: 4px; }
+.menu-items { max-height: 200px; overflow-y: auto; color: #333; }
+.menu-items div { padding: 8px; font-size: 12px; color: #2e7d32; }
+.menu-items div:hover { background: #e8f5e9; }
+.show { display: block !important; }
+.filter-btn { font-size: 10px; margin-left: 3px; }
+
+/* Dark Mode */
+body.dark-mode { background: #121212; color: #e0e0e0; }
+body.dark-mode .mail-box, body.dark-mode .dropdown-content, body.dark-mode .search-box input, body.dark-mode #searchHistoryBox { background: #1e1e1e; color: white; border-color: #4caf50; }
+body.dark-mode td, body.dark-mode th { border-color: #333; }
+body.dark-mode .preview td { background: #1b261b; color: #ccc; }
+body.dark-mode tbody:hover tr { background: #2e3d2e; color: #fff; }
+body.dark-mode .selected { background: #1b5e20 !important; }
+body.dark-mode #searchHistoryBox div { border-bottom-color: #333; color: #eee; }
+.dark-toggle { background: #444; }
+.dragging { opacity: 0.5; background: #e8f5e9; }
+
+/* استايل لوحة الإضافة المخفية */
+#adminPanel {
+    display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: white; padding: 25px; border: 3px solid #2e7d32; box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    z-index: 3000; border-radius: 15px; width: 400px; direction: rtl;
+}
+#adminPanel input, #adminPanel textarea { width: 100%; margin: 5px 0; padding: 8px; border: 1px solid #ccc; border-radius: 5px; }
+.admin-trigger { position: fixed; bottom: 10px; left: 10px; opacity: 0.1; cursor: pointer; background: none; border: none; font-size: 20px; z-index: 2500; }
+.admin-trigger:hover { opacity: 1; }
+.watermark-button-container {
+    position: fixed;
+    top: 40px;   /* نزلناه */
+    right: 40px; /* بعدناه عن الحافة */
+    z-index: 5000;
+
+    display: flex;
+    align-items: center;
+}
+
+.watermark-button {
+    width: 70px;
+    height: 70px;
+    cursor: pointer;
+    transition: transform 0.6s ease;
+}
+
+/* لما المنيو تفتح */
+.watermark-button.rotate {
+    transform: rotate(360deg);
+}
+
+.watermark-menu {
+    position: absolute;
+    top: 50%;
+    right: 70px; /* نفس عرض الزرار تقريبًا */
+
+    transform: translateY(-50%);
+
+    width: 0;
+    height: 0;
+
+    pointer-events: none;
+}
+.menu-item {
+    position: absolute;
+    right: 0;
+    top: 0;
+
+    display: inline-flex; /* ✅ مهم */
+    align-items: center;
+    gap: 4px;
+
+    padding: 4px 8px; /* أصغر */
+
+    border-radius: 999px;
+
+    font-size: 13px;
+    font-weight: 500;
+
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(8px);
+
+    color: #2e7d32;
+
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+
+    cursor: pointer;
+
+    white-space: nowrap;
+
+    width: fit-content; /* 💣 أهم سطر */
+
+    opacity: 0;
+    transform: scale(0.5);
+
+    transition: all 0.3s ease;
+
+        max-width: max-content;
+
+            line-height: 1;
+
+
+}
+.watermark-menu.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* كل عنصر يطلع بتأخير */
+.watermark-menu.show .menu-item:nth-child(1) {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition-delay: 0.1s;
+}
+
+.watermark-menu.show .menu-item:nth-child(2) {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition-delay: 0.2s;
+}
+
+.watermark-menu.show .menu-item:nth-child(3) {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition-delay: 0.3s;
+}
+.menu-item:active {
+    transform: scale(0.95);
+}
+
+.watermark-button:active {
+    transform: scale(0.9) rotate(10deg);
+}
+.menu-item:hover {
+    transform: scale(1.08);
+    background: #2e7d32;
+    color: white;
+
+    box-shadow: 0 6px 15px rgba(46,125,50,0.4);
+}
+
+
+
+
+.watermark-menu.show {
+    transform: scale(1);
+    opacity: 1;
+}
+
+
+.menu-item:hover {
+    background: rgba(46,125,50,0.1);
+}
+
+
+.menu-item:hover {
+    transform: scale(1.1);
+    color: #1b5e20;
+}
+@keyframes spin360 {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.watermark-button.spin {
+    animation: spin360 0.6s ease;
+}
+/* قريبين جدًا من الزرار */
+.watermark-menu.show .menu-item:nth-child(1) {
+    transform: translate(-5px, 10px) scale(1);
+    opacity: 1;
+}
+
+.watermark-menu.show .menu-item:nth-child(2) {
+    transform: translate(-10px, -15px) scale(1);
+    opacity: 1;
+}
+
+.watermark-menu.show .menu-item:nth-child(3) {
+    transform: translate(5px, -40px) scale(1);
+    opacity: 1;
+}
+.menu-item:active {
+    transform: scale(0.95);
+}
+.menu-item.active {
+    background: #2e7d32;
+    color: white;
+
+    box-shadow: 0 4px 12px rgba(46,125,50,0.5);
+}
+/* 1. الحاوية الرئيسية - ثابتة ومظبوطة */
+.responsive-header {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 2%;
+    gap: 15px;
+    box-sizing: border-box;
+}
+
+/* 2. اللوجو - تحكم كامل */
+.logo-box {
+    flex: 0 1 450px;
+}
+.scaled-logo {
+    width: 200px !important;
+    height: auto !important;
+    display: inline-block;
+    /* تحكم اللوجو: (شمال -20 ، فوق -15) وتكبير 10% */
+    transform: translate(40px, -20px) scale(2) !important;
+}
+
+/* 3. العنوان - مطاطي ومنظم */
+.title-box {
+    flex: 1 1 auto;
+    text-align: center;
+}
+.main-title {
+    display: inline-block;
+    margin: 0;
+    white-space: nowrap;
+    /* الخط: أصغر حاجة 18px وأكبر حاجة 40px (مقاسك المفضل) */
+    font-size: clamp(18px, 3.5vw, 40px) !important;
+    /* تحكم التايتل: (نزول لتحت 35 بكسل) */
+    transform: translate(-130px, 25px) scale(1) !important;
+}
+
+/* 4. الواتر مارك - تحكم حر */
+.watermark-box {
+    flex: 0 1 150px; 
+    display: flex;
+    justify-content: flex-end;
+}
+.watermark-icon {
+    /* شيلنا الـ clamp عشان متقيدش التحكم بتاعك */
+    width: 70px !important; 
+    height: auto !important;
+    cursor: pointer;
+    display: inline-block;
+    /* تحكم الواتر مارك: (شمال -40 عشان يدخل لجوه ، تحت 25) وتكبير 20% */
+    transform: translate(-40px, 25px) scale(1.2) !important;
+}
