@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>HDB - Quality Team Updates</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins..." rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+
+<button class="admin-trigger" onclick="checkAdmin()" title="Admin Settings">⚙️</button>
+<div id="adminPanel">
+    <h3>إضافة إيميل جديد</h3>
+    <input type="text" id="addCode" placeholder="كود الإيميل">
+    <input type="text" id="addTopic" placeholder="الموضوع">
+    <input type="text" id="addIdea" placeholder="الفكرة الأساسية">
+    <input type="text" id="addSender" placeholder="الراسل">
+    <textarea id="addContent" rows="4" placeholder="محتوى الإيميل"></textarea>
+    <button onclick="addNewEntry()" style="width:100%; background:#2e7d32; color:white;">إضافة الآن ✅</button>
+    <button onclick="document.getElementById('adminPanel').style.display='none'" style="width:100%; background:#888; color:white; margin-top:5px;">إلغاء</button>
+</div>
+<div class="responsive-header">
+    <div class="logo-box">
+        <img src="https://i.ibb.co/rR1NtqSF/logo.png" class="scaled-logo" alt="Logo">
+    </div>
+
+    <div class="title-box">
+        <h1 class="main-title">Quality Team Updates</h1>
+    </div>
+
+    <div class="watermark-box">
+        <div class="watermark-button-container">
+            <img src="https://i.ibb.co/KcS08Cxn/watermark.png" class="watermark-icon" onclick="toggleWatermarkMenu()">
+            <div class="watermark-menu">
+                <div class="menu-item" onclick="showAll()">📂 All</div>
+                <div class="menu-item" onclick="showFavorites()">⭐ Favorites</div>
+                <div class="menu-item" onclick="toggleDarkMode()">🌙 Dark Mode</div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+<div class="search-box">
+    <input type="text" placeholder="ابحث هنا..." id="searchInput" onkeyup="searchWithHistory(this.value)" onfocus="showSearchHistory()">
+    <div id="searchHistoryBox"></div>
+    <span class="icon">🔍</span>
+</div>
+
+<div class="mail-box" id="mailBox" onclick="copyMailContent()">
+    <h3 id="mailPlaceholder">👈 اختار ميل (اضغط للنسخ)</h3>
+</div>
+<div class="menu-item">🌙 Dark Mode</div>
+<div style="text-align:center">
+    <button onclick="showFavorites()">⭐ Favorites</button>
+    <button onclick="showAll()">📂 All</button>
+    <button class="dark-toggle" onclick="toggleDarkMode()">🌙 Dark Mode</button>
+</div>
+
+
+
+<table id="table">
+    <thead>
+        <tr>
+            <th>Fav<div class="resizer"></div></th>
+            <th>Code<div class="resizer"></div></th>
+            <th>
+                <div class="dropdown" onmouseenter="showMenu('topicDropdown')" onmouseleave="smartHideMenu('topicDropdown')">
+                    Topic <span class="filter-btn">▼</span>
+                    <div id="topicDropdown" class="dropdown-content">
+                        <input type="text" class="menu-search" placeholder="بحث..." onkeyup="filterMenuItems(this)">
+                        <div class="menu-items"><div onclick="filterTable('topic', 'All')"><b>Show All Topics</b></div></div>
+                    </div>
+                </div>
+                <div class="resizer"></div>
+            </th>
+            <th>Main Idea<div class="resizer"></div></th>
+            <th>
+                <div class="dropdown" onmouseenter="showMenu('senderDropdown')" onmouseleave="smartHideMenu('senderDropdown')">
+                    Sender <span class="filter-btn">▼</span>
+                    <div id="senderDropdown" class="dropdown-content">
+                        <input type="text" class="menu-search" placeholder="بحث..." onkeyup="filterMenuItems(this)">
+                        <div class="menu-items"><div onclick="filterTable('sender', 'All')"><b>Show All Senders</b></div></div>
+                    </div>
+                </div>
+                <div class="resizer"></div>
+            </th>
+        </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+</table>
+
+<script src="script.js"></script>
+</body>
+</html>
