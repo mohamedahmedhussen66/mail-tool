@@ -373,14 +373,13 @@ async function restoreMail(id) {
 }
 // نظام المعاينة الفورية للأدمن
 function setupLivePreview() {
-    const inputs = ['addCode', 'addTopic', 'addSender', 'addContent'];
+    const inputs = ['addTopic', 'addSender', 'addContent'];
     
     inputs.forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.addEventListener('input', () => {
                 // تحديث النصوص في المعاينة
-                if (id === 'addCode') document.getElementById('preCode').innerText = '#' + element.value;
                 if (id === 'addTopic') document.getElementById('preTopic').innerText = element.value || 'Topic Sample';
                 if (id === 'addSender') document.getElementById('preSender').innerText = element.value || '---';
                 if (id === 'addContent') {
@@ -398,6 +397,7 @@ function setupLivePreview() {
 // تشغيل الخاصية أول ما الصفحة تحمل
 document.addEventListener('DOMContentLoaded', setupLivePreview);
 // دالة فتح المعاينة
+// 1. دالة فتح المعاينة - منفصلة وجاهزة
 function openMailPreview() {
     const topic = document.getElementById('addTopic').value || "بدون عنوان";
     const content = document.getElementById('addContent').value || "لا يوجد محتوى";
@@ -420,6 +420,14 @@ function openMailPreview() {
     document.getElementById('mailPreviewModal').style.display = 'flex';
 }
 
+// 2. دالة إغلاق المعاينة - لازم تكون بره القوس عشان تشتغل
+function closeMailPreview() {
+    const modal = document.getElementById('mailPreviewModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
 function updateCharCount(textarea) {
     const count = textarea.value.length;
     const display = document.getElementById('charCountDisplay');
@@ -427,5 +435,67 @@ function updateCharCount(textarea) {
         display.innerText = count + " حرف";
         // تغيير اللون لتحذير الإيجنت لو الكلام زاد
         display.style.color = count > 800 ? "#e74c3c" : "#999";
+    }
+}
+// ==========================
+// FILTER SYSTEM - الإصلاح النهائي
+// ==========================
+
+let activeFilters = {};
+
+function toggleDropdown(e, field) {
+    e.stopPropagation();
+    
+    // إغلاق أي قائمة مفتوحة أخرى
+    document.querySelectorAll(".dropdown-content").forEach(d => {
+        if (d.id !== field + "Dropdown") d.classList.remove("show");
+    });
+
+    const dropdown = document.getElementById(field + "Dropdown");
+    dropdown.classList.toggle("show");
+
+    if (dropdown.classList.contains("show")) {
+        populateDropdown(field);
+    }
+}
+
+function populateDropdown(field) {
+    const itemsContainer = document.getElementById(field + "Items");
+    // استخراج القيم الفريدة من البيانات الموجودة فعلياً
+    const uniqueValues = [...new Set(allMails.map(m => m[field] || "---"))];
+
+    itemsContainer.innerHTML = "";
+    uniqueValues.forEach(val => {
+        const div = document.createElement("div");
+        div.className = "menu-item-option"; // لإضافة ستايل الهوفر
+        div.innerText = val;
+        div.onclick = () => applyFilter(field, val);
+        itemsContainer.appendChild(div);
+    });
+}
+
+function applyFilter(field, value) {
+    if (activeFilters[field] === value) {
+        delete activeFilters[field]; // إلغاء الفلتر لو ضغطت عليه تاني
+    } else {
+        activeFilters[field] = value;
+    }
+
+    const filtered = allMails.filter(m => {
+        return Object.keys(activeFilters).every(f => (m[f] || "---") === activeFilters[f]);
+    });
+
+    renderTable(filtered);
+    updateFilterIcon(field);
+}
+
+function updateFilterIcon(field) {
+    const icon = document.querySelector(`[onclick*="${field}"] .filter-icon`);
+    if (activeFilters[field]) {
+        icon.style.color = "#f1c40f"; // لون ذهبي عند التفعيل
+        icon.style.opacity = "1";
+    } else {
+        icon.style.color = "white";
+        icon.style.opacity = "0.4";
     }
 }
