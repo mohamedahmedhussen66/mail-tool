@@ -499,3 +499,13 @@ function updateFilterIcon(field) {
         icon.style.opacity = "0.4";
     }
 }
+function toggleWatermarkMenu() {
+    const menu = document.getElementById("watermarkMenu");
+
+    if (!menu) {
+        console.log("❌ العنصر مش موجود");
+        return;
+    }
+
+    menu.classList.toggle("show");
+}

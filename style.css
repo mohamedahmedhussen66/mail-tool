@@ -713,3 +713,56 @@ body.dark-mode #searchHistoryBox div { border-bottom-color: #333; color: #eee; }
     display: inline-block;
     width: 100%;
 }
+.radial-menu {
+    position: absolute;
+    top: 0;
+    right: 0;
+}
+
+.radial-item {
+    position: absolute;
+    width: 35px;
+    height: 35px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: white;
+    border-radius: 50%;
+
+    opacity: 0;
+    transform: scale(0.3);
+    transition: 0.3s;
+}
+
+/* يظهر لما تقف بالماوس */
+.watermark-container:hover .radial-item:nth-child(1) {
+    transform: translate(-100px, -50px);
+    opacity: 1;
+}
+
+.watermark-container:hover .radial-item:nth-child(2) {
+    transform: translate(-140px, 0px);
+    opacity: 1;
+}
+
+.watermark-container:hover .radial-item:nth-child(3) {
+    transform: translate(-100px, 50px);
+    opacity: 1;
+}
+.dropdown-menu {
+    position: absolute;
+    top: 75px;
+    right: 0;
+
+    background: white;
+    padding: 10px;
+    border-radius: 10px;
+
+    display: none;
+}
+
+.dropdown-menu.show {
+    display: block;
+}
