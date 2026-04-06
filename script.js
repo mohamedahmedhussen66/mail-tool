@@ -509,3 +509,26 @@ function toggleWatermarkMenu() {
 
     menu.classList.toggle("show");
 }
+function showAll() {
+    showingTrash = false;
+
+    // شيلنا أي حاجة مفتوحة
+    document.querySelectorAll('.actions-container-row').forEach(el => el.remove());
+
+    // رجع كل الإيميلات
+    let data = allMails.filter(m => !m.isDeleted);
+
+    // ترتيب الـ pinned
+    data.sort((a, b) => (b.isPinned || false) - (a.isPinned || false));
+
+    renderTable(data);
+}
+function showFavorites() {
+    showingTrash = false;
+
+    document.querySelectorAll('.actions-container-row').forEach(el => el.remove());
+
+    let data = allMails.filter(m => m.isFav && !m.isDeleted);
+
+    renderTable(data);
+}

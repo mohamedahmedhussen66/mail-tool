@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>HDB - Quality Team Updates</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+</head>
+<body>
+    <div id="toast-container"></div>
+    
+
+    <div id="secretLogin" class="secret-login">
+        <div class="login-box">
+            <h4>Admin Mode</h4>
+            <input type="password" id="adminPass" placeholder="أدخل المفتاح السري..." autofocus>
+        </div>
+    </div>
+
+    <div id="adminPanel" class="admin-dashboard">
+        <div class="admin-content">
+            <div class="admin-header">
+                <h3>إضافة تحديث جديد</h3>
+                <button class="close-btn" onclick="closeAdminPanel()">×</button>
+            </div>
+            <div class="admin-grid">
+                <input type="text" id="addTopic" placeholder="الموضوع">
+                <input type="text" id="addIdea" placeholder="الفكرة الأساسية">
+                <input type="text" id="addSender" placeholder="الراسل">
+                <select id="addCategory" style="padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+        <option value="General">General (Default)</option>
+        <option value="New Policy">New Policy 🟢</option>
+        <option value="Update">Update 🔵</option>
+        <option value="Urgent">Urgent 🔴</option>
+    </select>
+
+    <input type="date" id="expiryDate" title="تاريخ الأرشفة التلقائية">
+</div>
+            <div style="position: relative;">
+    <textarea id="addContent" placeholder="اكتب محتوى الميل هنا..." oninput="updateCharCount(this)" style="min-height: 200px; width: 100%;"></textarea>
+    <span id="charCountDisplay" style="position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.5); color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; pointer-events: none;">
+        0 حرف
+    </span>
+</div>
+            
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                <button class="save-btn" onclick="addNewEntry()" style="margin:0;">حفظ في قاعدة البيانات ✅</button>
+                <button type="button" onclick="openMailPreview()" style="background: #1976d2; color: white; border: none; padding: 15px; border-radius: 10px; cursor: pointer; font-weight: bold;">
+                    👁️ عرض شكل الإيميل (Preview Layout)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mailPreviewModal" class="preview-modal" style="display: none;" onclick="closeMailPreview()">
+    <div class="preview-card-banking" onclick="event.stopPropagation()">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">
+            <h3 style="color: #2e7d32; margin: 0;">👁️ معاينة التصميم</h3>
+            <span style="cursor: pointer; font-size: 28px; font-weight: bold; color: #999;" onclick="closeMailPreview()">&times;</span>
+        </div>
+        
+        <div id="previewContentArea"></div>
+        
+        <button type="button" onclick="closeMailPreview()" style="background: #ef5350; color: white; border: none; padding: 12px; border-radius: 8px; width: 100%; cursor: pointer; font-weight: bold; margin-top: 20px;">
+            إغلاق المعاينة
+        </button>
+    </div>
+</div>
+
+    <div class="responsive-header">
+        <div class="logo-box">
+            <img src="https://i.ibb.co/rR1NtqSF/logo.png" class="scaled-logo" alt="Logo">
+        </div>
+        <div class="title-box">
+            <h1 class="main-title">Quality Team Updates</h1>
+        </div>
+        <div class="watermark-box">
+            <div class="watermark-button-container">
+                <img src="https://i.ibb.co/KcS08Cxn/watermark.png" class="watermark-icon" onclick="toggleWatermarkMenu()">
+                <div id="watermarkMenu" class="watermark-menu">
+                    <div class="menu-item" onclick="showAll()">📂 All</div>
+                    <div class="menu-item" onclick="showFavorites()">⭐ Favorites</div>
+                    <div class="menu-item" onclick="toggleDarkMode()">🌙 Dark Mode</div>
+                    <div class="menu-item" onclick="toggleTrashView()">🗑️ Trash</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="search-box">
+    
+    
+    <input type="text" placeholder="ابحث بكود الميل أو الموضوع..." id="searchInput" onkeyup="search(this.value)">
+</div>
+
+    <div class="mail-box" id="mailBox" onclick="copyMailContent()">
+        <h3 id="mailPlaceholder">👈 اختار ميل من الجدول لعرضه (اضغط للنسخ)</h3>
+    </div>
+<table id="table" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+        <thead>
+    <tr>
+        <th>
+            <div class="dropdown" onclick="toggleDropdown(event, 'code')">
+                <div class="header-flex">
+                    <span class="column-title">Code | Status</span>
+                    <span class="filter-icon">🔍</span>
+                </div>
+                <div class="dropdown-content" id="codeDropdown">
+                    <input type="text" class="menu-search" placeholder="Search..." onkeyup="filterDropdown(this, 'code')">
+                    <div class="menu-items" id="codeItems"></div>
+                </div>
+            </div>
+        </th>
+
+        <th>
+            <div class="dropdown" onclick="toggleDropdown(event, 'topic')">
+                <div class="header-flex">
+                    <span class="column-title">Topic</span>
+                    <span class="filter-icon">🔍</span>
+                </div>
+                <div class="dropdown-content" id="topicDropdown">
+                    <input type="text" class="menu-search" placeholder="Search..." onkeyup="filterDropdown(this, 'topic')">
+                    <div class="menu-items" id="topicItems"></div>
+                </div>
+            </div>
+        </th>
+
+        <th>Main Idea</th>
+
+        <th>
+            <div class="dropdown" onclick="toggleDropdown(event, 'sender')">
+                <div class="header-flex">
+                    <span class="column-title">Sender</span>
+                    <span class="filter-icon">🔍</span>
+                </div>
+                <div class="dropdown-content" id="senderDropdown">
+                    <input type="text" class="menu-search" placeholder="Search..." onkeyup="filterDropdown(this, 'sender')">
+                    <div class="menu-items" id="senderItems"></div>
+                </div>
+            </div>
+        </th>
+    </tr>
+</thead>
+        <tbody id="tableBody">
+            </tbody>
+    </table>
+
+    <script src="script.js"></script>
+    <div id="toast" class="toast-msg"></div>
+</body>
+</html>
