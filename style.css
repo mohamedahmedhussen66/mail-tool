@@ -108,8 +108,15 @@ html {
 }
 
 @keyframes slideDownFade {
-    0% { opacity: 0; transform: translateY(-10px) scale(0.98); }
-    100% { opacity: 1; transform: translateY(0) scale(1); }
+    0% {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 #searchHistoryBox div {
@@ -127,7 +134,8 @@ html {
 #searchHistoryBox div:hover {
     background: rgba(46, 204, 113, 0.15);
     color: #27ae60;
-    padding-left: 25px; /* Slight indent hover effect */
+    padding-left: 25px;
+    /* Slight indent hover effect */
 }
 
 /* Typo Suggestion Box */
@@ -138,10 +146,10 @@ html {
     font-size: 12px;
     color: #e74c3c;
     display: none;
-    background: rgba(255,255,255,0.9);
+    background: rgba(255, 255, 255, 0.9);
     padding: 2px 10px;
     border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 #typoSuggestion span {
@@ -161,8 +169,15 @@ tbody tr {
 }
 
 @keyframes fadeInRow {
-    from { opacity: 0; transform: translateY(5px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 mark.highlighted-text {
@@ -454,12 +469,14 @@ body.dark-mode #searchHistoryBox div {
 .watermark-menu {
     position: absolute;
     top: 50%;
-    right: 70px; /* Adjust based on icon size */
+    right: 70px;
+    /* Adjust based on icon size */
     transform: translateY(-50%);
     width: 0;
     height: 0;
     pointer-events: none;
-    display: block; /* Overriding previous display:none/flex */
+    display: block;
+    /* Overriding previous display:none/flex */
 }
 
 .watermark-menu.show {
@@ -494,13 +511,20 @@ body.dark-mode #searchHistoryBox div {
     color: #e74c3c;
 }
 
-.watermark-menu.show .menu-item:nth-child(1) { transition-delay: 0.1s; transform: translate(-45px, 0px) scale(1); opacity: 1; }
-.watermark-menu.show .menu-item:nth-child(2) { transition-delay: 0.2s; transform: translate(-40px, -25px) scale(1); opacity: 1; }
-.watermark-menu.show .menu-item:nth-child(3) { transition-delay: 0.3s; transform: translate(-8px, -41px) scale(1); opacity: 1; }
-.watermark-menu.show .menu-item:nth-child(4) { transition-delay: 0.4s; transform: translate(-8px, -9px) scale(1); opacity: 1; }
-.watermark-menu.show .menu-item:nth-child(5) { transition-delay: 0.5s; transform: translate(-5px, 22px) scale(1); opacity: 1; }
-.watermark-menu.show .menu-item:nth-child(6) { transition-delay: 0.6s; transform: translate(12px, -71px) scale(1); opacity: 1; }
-.watermark-menu.show .menu-item:nth-child(7) { transition-delay: 0.7s; transform: translate(11px, 54px) scale(1); opacity: 1; }
+/* --- Agent Menu Positioning --- */
+.watermark-menu.is-agent.show .item-all { transition-delay: 0.1s; transform: translate(-8px, -71px) scale(1); opacity: 1; }
+.watermark-menu.is-agent.show .item-favs { transition-delay: 0.2s; transform: translate(-8px, -41px) scale(1); opacity: 1; }
+.watermark-menu.is-agent.show .item-mode { transition-delay: 0.3s; transform: translate(5px, 54px) scale(1); opacity: 1; }
+.watermark-menu.is-agent.show .item-trash { transition-delay: 0.4s; transform: translate(-8px, -9px) scale(1); opacity: 1; }
+.watermark-menu.is-agent.show .item-logout { transition-delay: 0.5s; transform: translate(-5px, 22px) scale(1); opacity: 1; }
+
+/* --- Admin Menu Positioning --- */
+.watermark-menu.is-admin.show .item-users { transition-delay: 0.1s; transform: translate(-6px, 26px) scale(1); opacity: 1; }
+.watermark-menu.is-admin.show .item-add { transition-delay: 0.2s; transform: translate(82px, 89px) scale(1); opacity: 1; }
+.watermark-menu.is-admin.show .item-mode { transition-delay: 0.3s; transform: translate(4px, -69px) scale(1); opacity: 1; }
+.watermark-menu.is-admin.show .item-trash { transition-delay: 0.4s; transform: translate(-5px, -39px) scale(1); opacity: 1; }
+.watermark-menu.is-admin.show .item-dash { transition-delay: 0.5s; transform: translate(46px, 58px) scale(1); opacity: 1; }
+.watermark-menu.is-admin.show .item-logout { transition-delay: 0.6s; transform: translate(-5px, -6px) scale(1); opacity: 1; }
 
 .menu-item:hover {
     background: #fff;
@@ -513,12 +537,17 @@ body.dark-mode #searchHistoryBox div {
 }
 
 @keyframes spin-once {
-    0% { transform: translate(1px, -10px) scale(1.2) rotate(0deg); }
-    100% { transform: translate(1px, -10px) scale(1.2) rotate(360deg); }
+    0% {
+        transform: translate(1px, -10px) scale(1.2) rotate(0deg);
+    }
+
+    100% {
+        transform: translate(1px, -10px) scale(1.2) rotate(360deg);
+    }
 }
 
 .watermark-icon {
-    width: 70px !important; 
+    width: 70px !important;
     height: auto !important;
     cursor: pointer;
     display: inline-block;
@@ -545,14 +574,16 @@ body.dark-mode #searchHistoryBox div {
     border-radius: 10px;
     border: 2px solid white;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    display: none; /* Auto-shown by JS */
+    display: none;
+    /* Auto-shown by JS */
     z-index: 10;
 }
 
 /* --- Integrated Features Adjustment --- */
 #welcomeArea {
     position: absolute;
-    top: -25px; /* Position it above the title */
+    top: -25px;
+    /* Position it above the title */
     left: 50%;
     transform: translateX(-50%);
     white-space: nowrap;
@@ -572,7 +603,8 @@ body.dark-mode #searchHistoryBox div {
     border-radius: 10px;
     border: 2px solid white;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    display: none; /* Auto-shown by JS */
+    display: none;
+    /* Auto-shown by JS */
     z-index: 10;
 }
 
@@ -583,29 +615,36 @@ body.dark-mode #searchHistoryBox div {
     transform: translateX(-50%);
     width: auto;
     max-width: 500px;
-    pointer-events: none; /* Let clicks pass through if empty */
+    pointer-events: none;
+    /* Let clicks pass through if empty */
 }
 
-#stickyBannersContainer > * {
-    pointer-events: auto; /* Re-enable for content */
+#stickyBannersContainer>* {
+    pointer-events: auto;
+    /* Re-enable for content */
 }
 
 /* 1. الحاوية الرئيسية - ثابتة ومظبوطة */
 .responsive-header {
     display: flex;
-    flex-direction: row !important; /* إجباري يفضل سطر واحد */
-    flex-wrap: nowrap !important;   /* ممنوع منعاً باتاً ينزل سطر جديد */
+    flex-direction: row !important;
+    /* إجباري يفضل سطر واحد */
+    flex-wrap: nowrap !important;
+    /* ممنوع منعاً باتاً ينزل سطر جديد */
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 5px 1%;               /* تقليل المسافات الجانبية للموبايل */
-    gap: 5px;                      /* مسافة صغيرة جداً بين العناصر */
+    padding: 5px 1%;
+    /* تقليل المسافات الجانبية للموبايل */
+    gap: 5px;
+    /* مسافة صغيرة جداً بين العناصر */
 }
 
 /* 2. اللوجو - تحكم كامل */
 .logo-box {
     flex: 0 1 304px;
 }
+
 .scaled-logo {
     width: 204px !important;
     height: auto !important;
@@ -619,6 +658,7 @@ body.dark-mode #searchHistoryBox div {
     flex: 1 1 auto;
     text-align: center;
 }
+
 .main-title {
     display: inline-block;
     margin: 0;
@@ -631,7 +671,7 @@ body.dark-mode #searchHistoryBox div {
 
 /* 4. الواتر مارك - تحكم حر */
 .watermark-box {
-    flex: 0 1 150px; 
+    flex: 0 1 150px;
     display: flex;
     justify-content: flex-end;
 }
@@ -702,9 +742,9 @@ body.dark-mode #searchHistoryBox div {
 
 .login-glass-card {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08); 
+    border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(12px); 
+    backdrop-filter: blur(12px);
     border-radius: 20px;
     padding: 12px 30px 20px;
     width: 290px;
@@ -718,23 +758,45 @@ body.dark-mode #searchHistoryBox div {
 }
 
 @keyframes royalEntrance {
-    0% { transform: perspective(1000px) translateY(40px) rotateX(-10deg); opacity: 0; }
-    100% { transform: perspective(1000px) translateY(0) rotateX(0); opacity: 1; }
+    0% {
+        transform: perspective(1000px) translateY(40px) rotateX(-10deg);
+        opacity: 0;
+    }
+
+    100% {
+        transform: perspective(1000px) translateY(0) rotateX(0);
+        opacity: 1;
+    }
 }
 
 /* Staggered Child Entrance */
-.login-glass-card > * {
+.login-glass-card>* {
     opacity: 0;
     animation: fadeInSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.login-glass-card > *:nth-child(1) { animation-delay: 0.3s; }
-.login-glass-card > *:nth-child(2) { animation-delay: 0.5s; }
-.login-glass-card > *:nth-child(3) { animation-delay: 0.7s; }
+.login-glass-card>*:nth-child(1) {
+    animation-delay: 0.3s;
+}
+
+.login-glass-card>*:nth-child(2) {
+    animation-delay: 0.5s;
+}
+
+.login-glass-card>*:nth-child(3) {
+    animation-delay: 0.7s;
+}
 
 @keyframes fadeInSlide {
-    from { transform: translateY(15px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    from {
+        transform: translateY(15px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 @keyframes slideUpFade {
@@ -834,9 +896,17 @@ body.dark-mode #searchHistoryBox div {
 }
 
 @keyframes shimmerSweep {
-    0% { left: -60%; }
-    20% { left: 120%; }
-    100% { left: 120%; }
+    0% {
+        left: -60%;
+    }
+
+    20% {
+        left: 120%;
+    }
+
+    100% {
+        left: 120%;
+    }
 }
 
 .btn-login:hover {
@@ -851,8 +921,13 @@ body.dark-mode #searchHistoryBox div {
 }
 
 @keyframes securityPulse {
-    0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); }
-    100% { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
+    0% {
+        box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+    }
+
+    100% {
+        box-shadow: 0 0 0 15px rgba(46, 204, 113, 0);
+    }
 }
 
 .shake {
@@ -1359,7 +1434,9 @@ body.dark-mode #searchHistoryBox div {
 }
 
 @keyframes watermark-icon-breath {
-    0%, 100% {
+
+    0%,
+    100% {
         transform: translate(1px, -10px) scale(1.2);
     }
 
@@ -1408,7 +1485,7 @@ body.dark-mode #searchHistoryBox div {
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.4);
     z-index: 2000;
@@ -1418,8 +1495,15 @@ body.dark-mode #searchHistoryBox div {
 }
 
 @keyframes fadeInScale {
-    from { opacity: 0; transform: scale(0.95) translateY(-5px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 .dropdown-content.show {
@@ -1559,9 +1643,21 @@ body.dark-mode #searchHistoryBox div {
 }
 
 @keyframes shakeError {
-    0%, 100% { transform: translateX(0); }
-    20%, 60% { transform: translateX(-10px); }
-    40%, 80% { transform: translateX(10px); }
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    20%,
+    60% {
+        transform: translateX(-10px);
+    }
+
+    40%,
+    80% {
+        transform: translateX(10px);
+    }
 }
 
 .shake {
@@ -1594,7 +1690,7 @@ body.dark-mode #searchHistoryBox div {
     justify-content: center;
     font-size: 14px;
     text-transform: uppercase;
-    box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.05);
 }
 
 .pass-container {
@@ -1661,20 +1757,25 @@ body.dark-mode #searchHistoryBox div {
     position: sticky;
     top: 0;
     z-index: 99999;
-    background: #e74c3c;
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
     color: white;
-    padding: 10px 20px;
+    padding: 15px 30px;
     display: none;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
     font-weight: 500;
     animation: slideDown 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes slideDown {
-    from { transform: translateY(-100%); }
-    to { transform: translateY(0); }
+    from {
+        transform: translateY(-100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
 }
 
 .stats-container {
@@ -1692,12 +1793,12 @@ body.dark-mode #searchHistoryBox div {
     padding: 15px;
     text-align: center;
     transition: 0.3s;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .stat-card-glass:hover {
     transform: translateY(-5px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 .stat-value {
@@ -1723,7 +1824,8 @@ body.dark-mode #searchHistoryBox div {
     color: white;
     padding: 12px 22px;
     border-radius: 50px;
-    display: none; /* Control via JS flex/none */
+    display: none;
+    /* Control via JS flex/none */
     align-items: center;
     gap: 12px;
     cursor: pointer;
@@ -1754,12 +1856,43 @@ body.dark-mode #searchHistoryBox div {
     justify-content: center;
     font-size: 11px;
     font-weight: 800;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes slideInUpFAB {
-    from { transform: translateY(100px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    from {
+        transform: translateY(100px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
+/* ⭐ تعديل 8: Permanent Delete Button */
+.btn-perm-delete {
+    background: linear-gradient(135deg, #c0392b, #e74c3c) !important;
+    color: white !important;
+    border: 1.5px solid #c0392b !important;
+    box-shadow: 0 3px 10px rgba(192, 57, 43, 0.4) !important;
+    animation: pulse-perm 1.8s ease-in-out infinite;
+}
 
+@keyframes pulse-perm {
+
+    0%,
+    100% {
+        box-shadow: 0 3px 10px rgba(192, 57, 43, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 3px 18px rgba(192, 57, 43, 0.75);
+    }
+}
+
+.btn-perm-delete:hover {
+    transform: scale(1.12) !important;
+    background: linear-gradient(135deg, #922b21, #c0392b) !important;
+}
