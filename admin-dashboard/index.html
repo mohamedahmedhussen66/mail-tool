@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HDB - Admin Command Center</title>
+    <link rel="icon" type="image/png" href="../favicon-bank.png">
+    <!-- Fonts: Poppins for English, Cairo for Arabic -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Cairo:wght@400;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Chart.js for graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+
+<body class="dark-theme">
+
+    <!-- Professional Splash Screen -->
+    <div id="loader" class="loader-overlay">
+        <div class="splash-center">
+            <!-- Logo + Spinner Ring around it -->
+            <div class="splash-logo-ring">
+                <div class="splash-ring-anim"></div>
+                <img src="https://i.ibb.co/rR1NtqSF/logo.png" alt="HDB Logo" class="splash-logo-img">
+            </div>
+            <!-- Title -->
+            <div class="splash-title">HDB Quality Team</div>
+            <div class="splash-subtitle">Admin Command Center</div>
+            <!-- Progress bar -->
+            <div class="splash-progress-track">
+                <div class="splash-progress-bar"></div>
+            </div>
+            <div class="splash-loading-text">Loading live data...</div>
+        </div>
+        <style>
+            .splash-center {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+            }
+            .splash-logo-ring {
+                position: relative;
+                width: 110px;
+                height: 110px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .splash-ring-anim {
+                position: absolute;
+                inset: 0;
+                border-radius: 50%;
+                border: 3px solid transparent;
+                border-top-color: #2ecc71;
+                border-bottom-color: #27ae60;
+                animation: splashSpin 1.2s linear infinite;
+            }
+            .splash-logo-img {
+                width: 72px;
+                height: 72px;
+                object-fit: contain;
+                border-radius: 50%;
+                filter: drop-shadow(0 0 12px rgba(46,204,113,0.5));
+            }
+            .splash-title {
+                font-size: 20px;
+                font-weight: 700;
+                color: #2ecc71;
+                letter-spacing: 0.5px;
+                margin-top: 8px;
+            }
+            .splash-subtitle {
+                font-size: 12px;
+                color: rgba(255,255,255,0.4);
+                text-transform: uppercase;
+                letter-spacing: 2px;
+            }
+            .splash-progress-track {
+                width: 160px;
+                height: 4px;
+                background: rgba(255,255,255,0.08);
+                border-radius: 10px;
+                overflow: hidden;
+                margin-top: 18px;
+            }
+            .splash-progress-bar {
+                height: 100%;
+                width: 0%;
+                background: linear-gradient(90deg, #2ecc71, #27ae60);
+                border-radius: 10px;
+                animation: splashProgress 8s linear forwards;
+            }
+            .splash-loading-text {
+                font-size: 11px;
+                color: rgba(255,255,255,0.3);
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+            }
+            @keyframes splashSpin { 100% { transform: rotate(360deg); } }
+            @keyframes splashProgress { to { width: 100%; } }
+        </style>
+    </div>
+
+    <!-- Agent Profile Modal -->
+    <div id="agentProfileModal"
+        style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); z-index:999999; justify-content:center; align-items:center;">
+        <div class="glass-card"
+            style="width: 620px; max-width:95%; padding:30px; position:relative; max-height: 90vh; overflow-y: auto;">
+            <button onclick="closeAgentProfile()"
+                style="position:absolute; top:15px; right:15px; background:rgba(255,255,255,0.1); border:none; color:white; font-size:16px; width:30px; height:30px; border-radius:50%; cursor:pointer; display:flex; justify-content:center; align-items:center;">✖</button>
+            <button onclick="printAgentReport()"
+                style="position:absolute; top:15px; right:55px; background:rgba(39,174,96,0.2); border:1px solid rgba(39,174,96,0.4); color:#2ecc71; font-size:12px; padding:4px 10px; border-radius:20px; cursor:pointer; font-weight:bold;">🖨️
+                Print Report</button>
+            <div id="agentProfileContent">Loading...</div>
+            <div id="agentSearchCloud"
+                style="margin-top:20px; padding-top:15px; border-top:1px solid rgba(255,255,255,0.08);"></div>
+        </div>
+    </div>
+
+    <!-- Custom Export Modal -->
+    <div id="exportModal"
+        style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); z-index:999999; justify-content:center; align-items:center;">
+        <div class="glass-card" style="width: 450px; max-width:95%; padding:30px; position:relative;">
+            <button onclick="closeExportModal()"
+                style="position:absolute; top:15px; right:15px; background:rgba(255,255,255,0.1); border:none; color:white; font-size:16px; width:30px; height:30px; border-radius:50%; cursor:pointer; display:flex; justify-content:center; align-items:center;">✖</button>
+            <h2 style="margin:0 0 15px 0; color:var(--primary); display:flex; align-items:center; gap:10px;">📥
+                Professional Export</h2>
+            <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;">Customize your report parameters
+                below before generating the CSV.</p>
+
+            <label style="display:block; margin-bottom:8px; font-size:14px; font-weight:bold;">Date Range:</label>
+            <select id="exportDateRange"
+                style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:white; margin-bottom:15px;">
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 Days</option>
+                <option value="month">Last 30 Days</option>
+            </select>
+
+            <label style="display:block; margin-bottom:8px; font-size:14px; font-weight:bold;">Data to Export:</label>
+            <div style="margin-bottom:25px;">
+                <label style="display:flex; align-items:center; gap:10px; margin-bottom:10px;"><input type="checkbox"
+                        id="expOverview" checked> System Overview KPIs</label>
+                <label style="display:flex; align-items:center; gap:10px; margin-bottom:10px;"><input type="checkbox"
+                        id="expAgents" checked> Agents Compliance & Behavior</label>
+                <label style="display:flex; align-items:center; gap:10px; margin-bottom:10px;"><input type="checkbox"
+                        id="expMails" checked> Detailed Mails Intelligence</label>
+            </div>
+
+            <button onclick="executeProfessionalExport()"
+                style="width:100%; background:var(--primary); color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:15px; transition:0.2s;"
+                onmouseover="this.style.background='#27ae60'"
+                onmouseout="this.style.background='var(--primary)'">Generate & Download Report</button>
+        </div>
+    </div>
+
+    <div class="dashboard-wrapper">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo-area"
+                style="flex-direction: column; text-align: center; justify-content: center; padding-top: 20px;">
+                <div
+                    style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; margin-bottom: 10px;">
+                    <img src="https://i.ibb.co/rR1NtqSF/logo.png" alt="HDB"
+                        style="width: 140px; display: block; margin: 0 auto; filter: drop-shadow(0 4px 18px rgba(39,174,96,0.2));">
+                </div>
+                <h2 data-i18n="admin_panel" class="sidebar-title" style="color: var(--primary);">Quality Admin</h2>
+            </div>
+
+            <ul class="nav-links">
+                <li class="active" onclick="switchTab('overview')">
+                    <span class="icon">📊</span> <span data-i18n="overview">Overview KPIs</span>
+                </li>
+                <li onclick="switchTab('agents')">
+                    <span class="icon">👥</span> <span data-i18n="agents_monitor">Agent Behavior</span>
+                </li>
+                <li onclick="switchTab('mails')">
+                    <span class="icon">📧</span> <span data-i18n="mail_analytics">Mail Intelligence</span>
+                </li>
+                <li onclick="switchTab('controls')">
+                    <span class="icon">🕹️</span> <span data-i18n="master_controls">Master Controls</span>
+                </li>
+                <li onclick="switchTab('audit')">
+                    <span class="icon">🛡️</span> <span data-i18n="security_audit">Audit Log</span>
+                </li>
+                <li onclick="switchTab('admincore')"
+                    style="border-top: 1px dashed rgba(255,255,255,0.1); margin-top:10px; padding-top:10px;">
+                    <span class="icon">💻</span> <span>Admin Core</span>
+                </li>
+                <li onclick="switchTab('recycle')">
+                    <span class="icon">🗑️</span> <span>Recycle Bin</span>
+                    <span
+                        style="font-size:10px; background:#e74c3c; color:white; padding:2px 6px; border-radius:20px; margin-left:5px; font-weight:bold;">NEW</span>
+                </li>
+            </ul>
+
+            <div class="bottom-actions">
+                <button class="action-btn" onclick="toggleLanguage()">
+                    🌐 <span data-i18n="switch_lang">عربي</span>
+                </button>
+                <button class="action-btn" onclick="toggleTheme()">
+                    💡 <span data-i18n="switch_theme">Light Mode</span>
+                </button>
+                <button class="action-btn danger-btn" onclick="window.location.href='../Mail_tool2.html'">
+                    🚪 <span data-i18n="exit_dashboard">Exit to Portal</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- 🔴 Global Ticker Bar -->
+            <div id="tickerBar"
+                style="background:linear-gradient(90deg,rgba(39,174,96,0.15),rgba(39,174,96,0.05)); border-bottom:1px solid rgba(39,174,96,0.2); padding:6px 20px; display:flex; align-items:center; gap:15px; overflow:hidden; white-space:nowrap;">
+                <span
+                    style="font-size:11px; font-weight:bold; color:var(--primary); letter-spacing:1px; flex-shrink:0;">⚡
+                    LIVE</span>
+                <div id="tickerContent"
+                    style="display:flex; gap:40px; animation:ticker 25s linear infinite; font-size:12px; color:var(--text-muted);">
+                    Loading ticker...</div>
+            </div>
+            <style>
+                @keyframes ticker {
+                    0% {
+                        transform: translateX(0)
+                    }
+
+                    100% {
+                        transform: translateX(-50%)
+                    }
+                }
+            </style>
+
+            <!-- Header -->
+            <header class="top-header">
+                <div class="header-titles">
+                    <h1 id="pageTitle" data-i18n="overview">Overview KPIs</h1>
+                    <div class="live-indicator">
+                        <span class="pulse-dot"></span>
+                        <span data-i18n="live_feed">Live System Feed</span>
+                    </div>
+                </div>
+
+                <!-- Latency + Date Range Filter -->
+                <div class="global-filters">
+                    <span id="latencyBadge"
+                        style="font-size:12px; padding:4px 10px; border-radius:20px; background:rgba(46,204,113,0.15); color:#2ecc71; margin-right:5px;">⚡
+                        --ms</span>
+                    <label style="color:var(--text-muted); font-size: 13px;" data-i18n="filter_by">Time Range:</label>
+                    <select id="globalDateFilter" onchange="applyDateFilter()">
+                        <option value="today" data-i18n="today">Today</option>
+                        <option value="week" data-i18n="this_week">This Week</option>
+                        <option value="month" data-i18n="this_month">This Month</option>
+                        <option value="all" data-i18n="all_time" selected>All Time</option>
+                    </select>
+                    <button class="refresh-btn" onclick="forceRefresh()" title="Sync Data">🔄</button>
+                    <button class="refresh-btn" onclick="openExportModal()" title="Export Professional Report"
+                        style="background:rgba(39,174,96,0.2); border-color:rgba(39,174,96,0.4);">📥 Export CSV</button>
+                </div>
+            </header>
+
+            <!-- 1. OVERVIEW section -->
+            <section id="view-overview" class="view-section active">
+                <div class="kpi-grid">
+                    <!-- KPI 1 -->
+                    <div class="glass-card kpi-card flip-card-container" onclick="flipCard(this)">
+                        <div class="flip-card-inner">
+                            <div class="flip-card-front">
+                                <span class="kpi-icon">📝</span>
+                                <div class="kpi-info">
+                                    <span class="kpi-val"><span class="counter" data-target="1245">0</span></span>
+                                    <span class="kpi-title" data-i18n="total_mails">Total Published Mails</span>
+                                </div>
+                                <div class="trend positive">↑ 12% <span data-i18n="vs_last_month">vs last month</span>
+                                </div>
+                            </div>
+                            <div class="flip-card-back">
+                                <h4>Breakdown</h4>
+                                <p>Urgent: 140</p>
+                                <p>Updates: 800</p>
+                                <p>Policies: 305</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- KPI 2 -->
+                    <div class="glass-card kpi-card flip-card-container" onclick="flipCard(this)">
+                        <div class="flip-card-inner">
+                            <div class="flip-card-front">
+                                <span class="kpi-icon">📖</span>
+                                <div class="kpi-info">
+                                    <span class="kpi-val"><span class="counter" data-target="86">0</span>%</span>
+                                    <span class="kpi-title" data-i18n="read_rate">Global Read Rate</span>
+                                </div>
+                                <div class="trend positive">↑ 4% <span data-i18n="vs_last_month">vs last month</span>
+                                </div>
+                            </div>
+                            <div class="flip-card-back">
+                                <h4>Details</h4>
+                                <p>Unread Mails: <span style="color:var(--danger)">174</span></p>
+                                <p>Conf. Rate: <span id="confRateVal"
+                                        style="color:var(--primary); font-weight:bold;">--</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- KPI 3 -->
+                    <div class="glass-card kpi-card highlight-card">
+                        <span class="kpi-icon">⚡</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span class="counter" data-target="42">0</span></span>
+                            <span class="kpi-title" data-i18n="active_now">Agents Active Now</span>
+                        </div>
+                        <div class="trend neutral">Steady traffic</div>
+                    </div>
+                    <!-- KPI 4 -->
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">🔍</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span class="counter" data-target="312">0</span></span>
+                            <span class="kpi-title" data-i18n="searches_today">Searches Today</span>
+                        </div>
+                        <div class="trend negative">↓ 5% <span data-i18n="vs_yesterday">vs yesterday</span></div>
+                    </div>
+                </div>
+
+                <!-- Advanced Analytics Row -->
+                <div class="dashboard-row" style="margin-bottom: 20px;">
+                    <div class="col-4 glass-card"
+                        style="padding: 20px; display:flex; align-items:center; justify-content:space-between;">
+                        <div>
+                            <h3 class="card-title" style="margin:0 0 10px 0;">⚡ System Health Score</h3>
+                            <p id="dailySummaryText"
+                                style="color:var(--text-muted); font-size:13px; margin-bottom:5px;">Overall engagement,
+                                compliance & activity.</p>
+                            <p id="readConsistencyText" style="font-size:12px; color:#f1c40f;"></p>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:36px; font-weight:800; color:var(--primary);" id="healthScoreVal">--
+                            </div>
+                            <span style="font-size:12px; font-weight:bold;" id="healthScoreLabel">Calculating...</span>
+                        </div>
+                    </div>
+                    <div class="col-4 glass-card" style="padding: 20px;">
+                        <h3 class="card-title" style="margin:0 0 15px 0;">🏎️ Fastest Reader Today</h3>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <div id="fastestAvatar"
+                                style="width:40px; height:40px; border-radius:50%; background:linear-gradient(45deg, #f1c40f, #f39c12); color:white; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:18px;">
+                                ?</div>
+                            <div>
+                                <div id="fastestName" style="font-weight:bold; font-size:16px;">Waiting for data...
+                                </div>
+                                <div id="fastestTime" style="font-size:12px; color:var(--text-muted);">Response time: --
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4 glass-card" style="padding:20px;">
+                        <h3 class="card-title" style="margin:0 0 15px 0;">⏱️ Avg Response Time</h3>
+                        <div style="font-size:32px; font-weight:800; color:#a78bfa;" id="avgResponseTimeVal">--</div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">Minutes from publish →
+                            first read</div>
+                        <div style="margin-top:10px; font-size:13px;">🔥 Best publish hour: <strong id="bestPublishHour"
+                                style="color:var(--primary);">--</strong></div>
+                    </div>
+                </div>
+
+                <!-- 🚨 Urgent Unread Alert Bar -->
+                <div id="urgentAlertBar"
+                    style="display:none; background:linear-gradient(90deg,rgba(239,68,68,0.2),rgba(239,68,68,0.05)); border:1px solid rgba(239,68,68,0.4); border-radius:10px; padding:12px 20px; margin-bottom:15px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; animation:pulseRed 2s ease infinite;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:20px;">🚨</span>
+                        <div>
+                            <strong style="color:#ef4444;">Urgent Mail Alert</strong>
+                            <div id="urgentAlertText" style="font-size:13px; color:var(--text-muted);">Checking for
+                                unread urgent mails...</div>
+                        </div>
+                    </div>
+                    <button onclick="document.getElementById('urgentAlertBar').style.display='none'"
+                        style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#ef4444; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:12px;">Dismiss</button>
+                </div>
+                <style>
+                    @keyframes pulseRed {
+
+                        0%,
+                        100% {
+                            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3)
+                        }
+
+                        50% {
+                            box-shadow: 0 0 0 8px rgba(239, 68, 68, 0)
+                        }
+                    }
+                </style>
+
+                <!-- Dead Mails Alert Row -->
+                <div class="dashboard-row" style="margin-bottom:20px;">
+                    <div class="glass-card col-12"
+                        style="padding:15px 20px; border:1px solid rgba(239,68,68,0.2); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h3 class="card-title" style="margin:0; color:var(--danger);">🪦 Dead Mails Alert</h3>
+                            <p style="font-size:13px; color:var(--text-muted); margin:5px 0 0;">Mails older than 7 days
+                                with less than 30% read rate — require admin attention.</p>
+                        </div>
+                        <div id="deadMailsAlert" style="font-size:13px; color:var(--text-muted);">Scanning...</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-row">
+                    <!-- Chart -->
+                    <div class="glass-card col-7">
+                        <h3 data-i18n="pulse_chart" class="card-title">System Pulse (Read vs Publish)</h3>
+                        <div style="height: 250px;">
+                            <canvas id="pulseChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Top Searches + Live Agents -->
+                    <div class="glass-card col-5">
+                        <h3 data-i18n="top_searches" class="card-title">🔥 Top Search Topics</h3>
+                        <ul class="top-list" id="topSearchList">
+                            <li><span class="list-num">1</span> <span class="list-text">Loading...</span></li>
+                        </ul>
+                        <!-- Live Active Agents -->
+                        <div style="margin-top:15px; padding-top:15px; border-top:1px solid rgba(255,255,255,0.07);">
+                            <h4 style="margin:0 0 10px 0; font-size:13px; color:var(--primary);">🟢 Online Right Now
+                            </h4>
+                            <div id="liveAgentsList"
+                                style="font-size:12px; color:var(--text-muted); max-height:100px; overflow-y:auto;">
+                                Checking...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. AGENTS section -->
+            <section id="view-agents" class="view-section" style="display:none;">
+                <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">🛡️</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="totalAgentsVal">0</span></span>
+                            <span class="kpi-title">Registered Agents</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">⚠️</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="inactiveAgentsVal"
+                                    style="color: var(--danger)">0</span></span>
+                            <span class="kpi-title">Inactive (7d)</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">🌙</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="absentTodayVal" style="color:#f1c40f">0</span></span>
+                            <span class="kpi-title">Absent Today</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">📬</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="totalBacklogVal" style="color:var(--danger)">0</span></span>
+                            <span class="kpi-title">Total Backlog</span>
+                        </div>
+                        <div class="trend neutral" style="font-size:11px;">Unread across all agents</div>
+                    </div>
+                </div>
+                <!-- Agent Search -->
+                <div class="glass-card" style="padding:15px 20px; margin-top:15px;">
+                    <input type="text" id="agentSearch" placeholder="🔍  Search Agents by Name or Branch..."
+                        onkeyup="filterAgents()"
+                        style="width:100%; padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:inherit; font-size:15px;">
+                </div>
+
+                <!-- Leaderboard Row -->
+                <div class="dashboard-row" style="margin-bottom: 20px;">
+                    <div class="glass-card col-8" style="padding: 20px;">
+                        <h3 class="card-title" style="margin-top:0;">🏆 Top Agents Leaderboard</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Automated ranking based
+                            on read compliance and consistency.</p>
+                        <div id="agentLeaderboard"
+                            style="display:flex; gap:15px; overflow-x:auto; padding-bottom:10px;">
+                            <!-- injected via JS -->
+                        </div>
+                    </div>
+                    <div class="glass-card col-4" style="padding: 20px;">
+                        <h3 class="card-title" style="margin-top:0; color:#3498db;">📚 Most Referenced Mails</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Agents frequently
+                            returning to specific mails to assist customers.</p>
+                        <ul id="autoWarningLogList"
+                            style="list-style:none; padding:0; margin:0; max-height:120px; overflow-y:auto; font-size:13px;">
+                            <!-- Dynamic -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Out-of-Hours Reading Log -->
+                <div class="dashboard-row" style="margin-top:20px;">
+                    <div class="col-12 glass-card" style="padding:20px;">
+                        <h3 class="card-title" style="color:#a78bfa;">🌙 Out-of-Hours Readers</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Agents who read mails
+                            outside standard work hours (before 8AM or after 6PM).</p>
+                        <div id="outOfHoursList" style="max-height:150px; overflow-y:auto; font-size:13px;"><span
+                                style="color:var(--text-muted);">Loading...</span></div>
+                    </div>
+                </div>
+
+                <div class="agent-cards-grid" id="agentsGrid">
+                    <!-- Agent cards injected by JS -->
+                </div>
+            </section>
+
+            <!-- 3. MAILS section -->
+            <section id="view-mails" class="view-section" style="display:none;">
+                <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">⏰</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="peakHourVal">--</span></span>
+                            <span class="kpi-title">Peak Reading Hour</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">📊</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="avgReadsVal">0</span></span>
+                            <span class="kpi-title">Avg Reads per Mail</span>
+                        </div>
+                    </div>
+                    <div class="glass-card kpi-card" style="border:1px solid rgba(239, 68, 68, 0.3);">
+                        <span class="kpi-icon">⚡</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="urgentResponseVal">--</span></span>
+                            <span class="kpi-title">Urgent Response Time</span>
+                        </div>
+                        <div class="trend neutral" style="font-size:11px;">vs Normal: <span
+                                id="normalResponseVal">--</span></div>
+                    </div>
+                    <div class="glass-card kpi-card">
+                        <span class="kpi-icon">📌</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val"><span id="topPinnedCountVal">0</span></span>
+                            <span class="kpi-title">Most Pinned Mail</span>
+                        </div>
+                        <div class="trend neutral" style="font-size:11px;" id="topPinnedNameVal">--</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-row" style="margin-top: 20px;">
+                    <div class="col-7 glass-card" style="padding: 20px;">
+                        <h3 class="card-title">Reading Heatmap (24h)</h3>
+                        <div style="position: relative; height: 200px; width: 100%;">
+                            <canvas id="heatmapChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="col-5 glass-card" style="padding: 20px;">
+                        <h3 class="card-title">Top Mailing Engagement</h3>
+                        <ul class="top-list" id="topMailsList">
+                            <!-- Dynamic -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Secondary Intelligence Row -->
+                <div class="dashboard-row" style="margin-top: 20px;">
+                    <div class="col-6 glass-card" style="padding: 20px;">
+                        <h3 class="card-title">🍩 Engagement by Content Type</h3>
+                        <div
+                            style="position: relative; height: 200px; width: 100%; display:flex; justify-content:center;">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-6 glass-card" style="padding: 20px;">
+                        <h3 class="card-title">👨‍💻 Admin Productivity</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Number of mails created
+                            by each admin quality team member.</p>
+                        <ul class="top-list" id="adminProductivityList">
+                            <!-- Dynamic -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Mail Lifecycle Chart + Department Comparison -->
+                <div class="dashboard-row" style="margin-top:20px;">
+                    <div class="col-7 glass-card" style="padding:20px;">
+                        <h3 class="card-title">📈 Mail Lifecycle (Publish → Peak → Decline)</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:10px;">Select a mail to see its
+                            read activity over time.</p>
+                        <select id="lifecyclMailSelect" onchange="updateLifecycleChart()"
+                            style="width:100%; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.3); color:white; margin-bottom:10px; font-family:inherit;">
+                            <option value="">-- Select a Mail --</option>
+                        </select>
+                        <div style="height:180px;"><canvas id="lifecycleChart"></canvas></div>
+                    </div>
+                    <div class="col-5 glass-card" style="padding:20px;">
+                        <h3 class="card-title">🏢 Department Comparison</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:10px;">Read rate by agent
+                            branch/department.</p>
+                        <div style="height:180px;"><canvas id="deptChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- Duplicate Detector -->
+                <div class="dashboard-row" style="margin-top:20px;">
+                    <div class="glass-card col-12" style="padding:15px 20px; border:1px solid rgba(241,196,15,0.2);">
+                        <div
+                            style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                            <div>
+                                <h3 class="card-title" style="margin:0; color:#f1c40f;">⚠️ Duplicate Mail Detector</h3>
+                                <p style="font-size:13px; color:var(--text-muted); margin:5px 0 0;">Mails with very
+                                    similar titles that may be duplicates — review to avoid agent confusion.</p>
+                            </div>
+                            <div id="duplicateMailsList" style="font-size:13px;">Scanning for duplicates...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. CONTROLS section -->
+            <section id="view-controls" class="view-section" style="display:none;">
+                <div class="dashboard-row" style="margin-bottom:20px;">
+                    <!-- Emergency Broadcast -->
+                    <div class="col-4 glass-card" style="padding: 20px;">
+                        <h3 class="card-title" style="color: var(--danger)">🚨 Emergency Broadcast</h3>
+                        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">Instantly push an
+                            unskippable popup to all logged-in agents.</p>
+                        <input type="text" id="emergencyTitle" placeholder="Broadcast Title..."
+                            style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(0,0,0,0.2); color: inherit; margin-bottom: 8px;">
+                        <textarea id="emergencyMessage" placeholder="Type urgent message here..."
+                            style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(0,0,0,0.2); color: inherit; height: 70px; margin-bottom: 12px; resize:none; font-family:inherit;"></textarea>
+                        <button onclick="sendEmergencyBroadcast()"
+                            style="width: 100%; background: var(--danger); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size:14px;">📡
+                            Push Global Broadcast</button>
+                    </div>
+
+                    <!-- Force Read + Personal Warning -->
+                    <div class="col-4 glass-card" style="padding:20px;">
+                        <h3 class="card-title" style="color:#a78bfa;">👁️ Force Read a Mail</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Force a popup on an
+                            agent's screen that requires them to open a specific mail before continuing.</p>
+                        <input type="text" id="forceReadAgentSearch" placeholder="🔍 Search agent..."
+                            onkeyup="filterSelect('forceReadAgentSearch', 'forceReadAgent')"
+                            style="width:100%; padding:6px 10px; border-radius:8px 8px 0 0; border:1px solid rgba(167,139,250,0.3); border-bottom:none; background:rgba(0,0,0,0.3); color:inherit; font-size:12px; margin-bottom:0; font-family:inherit; outline:none;">
+                        <select id="forceReadAgent"
+                            style="width:100%; padding:10px; border-radius:0 0 8px 8px; border:1px solid rgba(167,139,250,0.3); background:rgba(0,0,0,0.2); color:inherit; margin-bottom:8px; font-family:inherit;">
+                            <option value="all">📢 All Agents</option>
+                        </select>
+                        <input type="text" id="forceReadMailCode" placeholder="Mail Code to force-read (e.g. QT-001)"
+                            style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(167,139,250,0.3); background:rgba(0,0,0,0.2); color:inherit; margin-bottom:12px; font-family:inherit;">
+                        <button onclick="sendForceRead()"
+                            style="width:100%; background:rgba(167,139,250,0.2); color:#a78bfa; border:1px solid rgba(167,139,250,0.4); padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">👁️
+                            Send Force-Read Order</button>
+
+                        <h3 class="card-title"
+                            style="color:#f1c40f; margin-top:20px; border-top:1px dashed rgba(255,255,255,0.1); padding-top:20px;">
+                            ⚡ Personal Warning</h3>
+                        <input type="text" id="warnAgentSearch" placeholder="🔍 Search agent..."
+                            onkeyup="filterSelect('warnAgentSearch', 'warnAgent')"
+                            style="width:100%; padding:6px 10px; border-radius:8px 8px 0 0; border:1px solid rgba(241,196,15,0.3); border-bottom:none; background:rgba(0,0,0,0.3); color:inherit; font-size:12px; margin-bottom:0; font-family:inherit; outline:none;">
+                        <select id="warnAgent"
+                            style="width:100%; padding:10px; border-radius:0 0 8px 8px; border:1px solid rgba(241,196,15,0.3); background:rgba(0,0,0,0.2); color:inherit; margin-bottom:8px; font-family:inherit;">
+                            <option value="">Select Agent...</option>
+                        </select>
+                        <input type="text" id="warnMessage" placeholder="Warning message..."
+                            style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(241,196,15,0.3); background:rgba(0,0,0,0.2); color:inherit; margin-bottom:12px; font-family:inherit;">
+                        <button onclick="sendPersonalWarning()"
+                            style="width:100%; background:rgba(241,196,15,0.15); color:#f1c40f; border:1px solid rgba(241,196,15,0.4); padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">⚡
+                            Send Warning</button>
+                    </div>
+
+                    <!-- Welcome msg + Quick Actions -->
+                    <div class="col-4 glass-card" style="padding:20px;">
+                        <h3 class="card-title" style="color:var(--primary);">💬 Welcome Message</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Change the dynamic
+                            greeting shown on the agents' portal login page.</p>
+                        <textarea id="welcomeMsgInput" placeholder="Enter new welcome message..."
+                            style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(39,174,96,0.3); background:rgba(0,0,0,0.2); color:inherit; height:70px; margin-bottom:12px; resize:none; font-family:inherit;"></textarea>
+                        <button onclick="updateWelcomeMessage()"
+                            style="width:100%; background:var(--primary); color:#000; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer; margin-bottom:20px;">💾
+                            Save Welcome Message</button>
+
+                        <h3 class="card-title" style="border-top:1px dashed rgba(255,255,255,0.1); padding-top:20px;">
+                            🛠️ Quick Actions</h3>
+                        <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+                            <button onclick="clearAllSearchHistory()"
+                                style="background:rgba(255,255,255,0.05); color:var(--text-main); border:1px solid var(--border-color); padding:10px; border-radius:8px; cursor:pointer; text-align:left;">🧹
+                                Clear All Search Logs</button>
+                            <button onclick="purgeOldBroadcasts()"
+                                style="background:rgba(255,255,255,0.05); color:var(--text-main); border:1px solid var(--border-color); padding:10px; border-radius:8px; cursor:pointer; text-align:left;">🗑️
+                                Purge Old Broadcasts</button>
+                        </div>
+                        <!-- System Lock / Maintenance Mode -->
+                        <div style="margin-top:20px; padding-top:20px; border-top:1px dashed rgba(255,255,255,0.1);">
+                            <h3 class="card-title" style="color:#ef4444; margin:0 0 8px 0;">🔒 System Lock (Maintenance)
+                            </h3>
+                            <p style="color:var(--text-muted); font-size:12px; margin-bottom:12px;">Block all agents
+                                from accessing the portal — shows maintenance message instead.</p>
+                            <div style="display:flex; gap:8px;">
+                                <button onclick="setMaintenanceMode(true)"
+                                    style="flex:1; background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:9px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">🔒
+                                    Lock System</button>
+                                <button onclick="setMaintenanceMode(false)"
+                                    style="flex:1; background:rgba(39,174,96,0.15); color:var(--primary); border:1px solid rgba(39,174,96,0.3); padding:9px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">🔓
+                                    Unlock System</button>
+                            </div>
+                            <div id="maintenanceStatus"
+                                style="margin-top:8px; font-size:12px; color:var(--text-muted); text-align:center;">
+                                Status: Checking...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Railway Timeline + Agent Poll -->
+                <div class="dashboard-row" style="margin-bottom:20px; margin-top:10px;">
+                    <div class="col-7 glass-card" style="padding:20px;">
+                        <h3 class="card-title" style="color:#60a5fa;">🚂 Scheduled Mails — Railway Timeline</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Visual pipeline of all
+                            upcoming scheduled mails sorted by publish time.</p>
+                        <div id="railwayTimeline"
+                            style="position:relative; padding-left:25px; max-height:250px; overflow-y:auto;">Loading...
+                        </div>
+                    </div>
+                    <div class="col-5 glass-card" style="padding:20px; border:1px solid rgba(167,139,250,0.2);">
+                        <h3 class="card-title" style="color:#a78bfa;">📊 Quick Agent Poll</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Send a hidden
+                            one-question poll that appears on agent screens.</p>
+                        <input type="text" id="pollQuestion"
+                            placeholder="Poll question (e.g. Is the system fast enough?)"
+                            style="width:100%; padding:9px; border-radius:8px; border:1px solid rgba(167,139,250,0.3); background:rgba(0,0,0,0.2); color:inherit; margin-bottom:8px; font-family:inherit; font-size:13px;">
+                        <div style="display:flex; gap:6px; margin-bottom:8px;">
+                            <input type="text" id="pollOpt1" placeholder="Option 1 (Yes)"
+                                style="flex:1; padding:7px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:inherit; font-family:inherit; font-size:12px;">
+                            <input type="text" id="pollOpt2" placeholder="Option 2 (No)"
+                                style="flex:1; padding:7px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:inherit; font-family:inherit; font-size:12px;">
+                        </div>
+                        <button onclick="sendAgentPoll()"
+                            style="width:100%; background:rgba(167,139,250,0.2); color:#a78bfa; border:1px solid rgba(167,139,250,0.4); padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">📤
+                            Launch Poll</button>
+                        <div id="pollResults" style="margin-top:12px; font-size:12px;"></div>
+                    </div>
+                </div>
+
+                <div class="dashboard-row">
+
+                    <!-- Action Audit Log -->
+                    <div class="col-7 glass-card" style="padding: 20px;">
+                        <h3 class="card-title">📝 Global Audit Log</h3>
+                        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">Real-time feed of all
+                            modifications happening across the core mail system.</p>
+
+                        <div id="auditLogFeed" style="max-height: 250px; overflow-y: auto; padding-right: 10px;">
+                            <!-- Dynamic Audit Items -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. ADMIN CORE section -->
+            <section id="view-admincore" class="view-section" style="display:none;">
+
+                <!-- KPIs Row -->
+                <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+                    <div class="glass-card kpi-card" style="padding:20px;">
+                        <span class="kpi-icon">🎯</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val" id="qualityDefectRate">--</span>
+                            <span class="kpi-title">Quality Defect Rate</span>
+                        </div>
+                        <div class="trend neutral" style="font-size:11px;">% of mails edited post-publish</div>
+                    </div>
+                    <div class="glass-card kpi-card" style="padding:20px;">
+                        <span class="kpi-icon">👨‍💼</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val" id="totalAdminsVal">--</span>
+                            <span class="kpi-title">Total Admins</span>
+                        </div>
+                        <div class="trend neutral" style="font-size:11px;">Quality team members</div>
+                    </div>
+                    <div class="glass-card kpi-card" style="padding:20px;">
+                        <span class="kpi-icon">📌</span>
+                        <div class="kpi-info">
+                            <span class="kpi-val" style="font-size:16px;" id="forcePinStatus">No mail pinned</span>
+                            <span class="kpi-title">Force-Pinned Mail</span>
+                        </div>
+                        <div class="trend neutral" style="font-size:11px;">Shown to ALL agents on portal</div>
+                    </div>
+                    <div class="glass-card kpi-card" style="padding:20px; grid-column: span 2;">
+                        <span class="kpi-icon">💾</span>
+                        <div class="kpi-info" style="width:100%;">
+                            <div style="display:flex; justify-content:space-between; width:100%;">
+                                <span class="kpi-title" style="margin:0; font-size:16px;">Firebase Storage
+                                    Capacity</span>
+                                <span class="trend neutral" style="font-size:11px;"
+                                    id="dbForecastVal">Calculating...</span>
+                            </div>
+                            <div
+                                style="width:100%; background:rgba(0,0,0,0.3); border-radius:10px; height:8px; position:relative; overflow:hidden; margin:10px 0;">
+                                <div id="firebaseProgressBar"
+                                    style="position:absolute; top:0; left:0; height:100%; width:0%; background:var(--primary); transition:width 0.5s;">
+                                </div>
+                            </div>
+                            <div
+                                style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted);">
+                                <span>Used: <strong style="color:white;" id="payloadWeightVal">--</strong></span>
+                                <span>Total: <strong style="color:white;">1024.0 MB (1GB)</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drafts + Dead Searches -->
+                <div class="dashboard-row" style="margin-bottom: 20px;">
+                    <div class="col-6 glass-card" style="padding: 20px;">
+                        <h3 class="card-title">🗂️ Drafts Pipeline</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Mails saved as drafts
+                            awaiting final review &amp; publication.</p>
+                        <ul id="draftsPipelineList"
+                            style="list-style:none; padding:0; margin:0; max-height:200px; overflow-y:auto;">
+                            <li style="color:var(--text-muted);">Loading...</li>
+                        </ul>
+                    </div>
+                    <div class="col-6 glass-card" style="padding: 20px; border: 1px solid rgba(239,68,68,0.25);">
+                        <h3 class="card-title" style="color:var(--danger);">❌ Dead Searches Analyzer</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Keywords agents searched
+                            that returned 0 matching mails — content gaps to fill.</p>
+                        <ul id="deadSearchesList"
+                            style="list-style:none; padding:0; margin:0; max-height:200px; overflow-y:auto;">
+                            <li style="color:var(--text-muted);">Loading...</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Scheduled Mails + Force Pin -->
+                <div class="dashboard-row">
+                    <div class="col-6 glass-card" style="padding: 20px;">
+                        <h3 class="card-title">⏰ Upcoming Scheduled Mails</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Next mails set to
+                            auto-publish.</p>
+                        <ul id="scheduledMailsList"
+                            style="list-style:none; padding:0; margin:0; max-height:220px; overflow-y:auto;">
+                            <li style="color:var(--text-muted);">Loading...</li>
+                        </ul>
+                    </div>
+                    <div class="col-6 glass-card" style="padding: 20px; border: 1px solid rgba(39,174,96,0.3);">
+                        <h3 class="card-title" style="color:var(--primary);">📌 Force Pin a Mail</h3>
+                        <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Force a specific mail to
+                            appear pinned at the top of every agent's screen globally.</p>
+                        <div style="display:flex; gap:10px; margin-bottom:15px;">
+                            <input type="text" id="forcePinCode" placeholder="Enter Mail Code (e.g. QT-001)..."
+                                style="flex:1; padding:10px; border-radius:8px; border:1px solid var(--border-color); background:rgba(0,0,0,0.2); color:inherit; font-family:inherit;">
+                            <button onclick="forcePinMail()"
+                                style="background:var(--primary); color:#000; font-weight:bold; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; white-space:nowrap;">📌
+                                Pin It</button>
+                        </div>
+                        <button onclick="unForcePinMail()"
+                            style="width:100%; background:rgba(239,68,68,0.1); color:var(--danger); border:1px solid rgba(239,68,68,0.3); padding:10px; border-radius:8px; cursor:pointer; font-weight:bold;">🗑️
+                            Remove Current Force-Pin</button>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- 7. RECYCLE BIN section -->
+            <section id="view-recycle" class="view-section" style="display:none;">
+                <div class="glass-card" style="padding:25px; border:1px solid rgba(239,68,68,0.2);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+                        <div>
+                            <h2 style="margin:0; color:var(--danger); display:flex; align-items:center; gap:10px;">🗑️
+                                Recycle Bin</h2>
+                            <p style="color:var(--text-muted); font-size:13px; margin:5px 0 0;">All deleted mails —
+                                restore or permanently delete.</p>
+                        </div>
+                        <button onclick="permanentDeleteAll()"
+                            style="background:rgba(239,68,68,0.15); color:var(--danger); border:1px solid rgba(239,68,68,0.3); padding:10px 18px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">💥
+                            Empty Recycle Bin</button>
+                    </div>
+                    <div id="recycleBinList" style="max-height:400px; overflow-y:auto;">
+                        <div style="text-align:center; padding:40px; color:var(--text-muted);">Loading deleted mails...
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Cinematic Focus Overlay -->
+    <div id="cinematicOverlay"
+        style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:99998; backdrop-filter:blur(3px); pointer-events:none;">
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+
+</html>
