@@ -77,7 +77,7 @@ function updateUserHeartbeat() {
                 });
             }
         });
-    } catch(e) { console.error("Heartbeat error", e); }
+    } catch (e) { console.error("Heartbeat error", e); }
 }
 
 // --- UI Helpers ---
@@ -111,7 +111,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         if (isAdminSession) {
-            document.getElementById("adminTopBars").style.display = "block";
+            // document.getElementById("adminTopBars").style.display = "block"; // Removed
         } else {
             setupNotificationPermissionPrompt();
         }
@@ -549,9 +549,9 @@ function updateBadgeCount() {
     // استخدام getVisibleMails المتفلترة عشان المجدول ميتحسبش لحد ما ينزل فعلياً
     const visibleNow = getVisibleMails();
     let unreadCount = 0;
-    
+
     const agentMailVersions = JSON.parse(localStorage.getItem('agentMailVersions') || '{}');
-    
+
     visibleNow.forEach(m => {
         let mailVer = m.lastUpdatedAt || m.createdAt?.seconds || "v1";
         let isRead = agentMailVersions[m.id] === mailVer;
@@ -680,7 +680,7 @@ function startTabAlert(unreadCount) {
         const visibleNow = getVisibleMails();
         let currentUnread = 0;
         const agentMailVersions = JSON.parse(localStorage.getItem('agentMailVersions') || '{}');
-        
+
         visibleNow.forEach(m => {
             let mailVer = m.lastUpdatedAt || m.createdAt?.seconds || "v1";
             let isRead = agentMailVersions[m.id] === mailVer;
@@ -937,7 +937,7 @@ function renderTable(data) {
 
         let mailVer = m.lastUpdatedAt || m.createdAt?.seconds || "v1";
         let isRead = false;
-        
+
         if (isAdminSession) {
             let adminRead = JSON.parse(localStorage.getItem('adminReadMails') || '[]');
             isRead = adminRead.includes(m.id);
@@ -978,7 +978,7 @@ function renderTable(data) {
             ${selectHtml}
             <td style="white-space: nowrap; width: 180px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 35px; display: flex; gap: 2px; justify-content: center;">
+                    <div style="width: 35px; display: flex; gap: 2px; justify-content: center; align-items: center;">
                         <span style="color:#f1c40f; font-size: 14px;">${userFavorites.includes(m.id) ? '★' : ''}</span>
                         <span style="font-size: 14px;">${m.isPinned || userPinned.includes(m.id) ? '📌' : ''}</span>
                     </div>
@@ -1002,14 +1002,20 @@ function renderTable(data) {
             </td>
         `;
 
-        // Double click action (show controls) - ⭐ تعديل: تمرير event صح علشان currentTarget يشتغل
-        row.ondblclick = (e) => {
-            if (e.target.closest('.bulk-cb')) return;
-            e.preventDefault();
-            // نعدل الـ currentTarget يدوياً لأن ondblclick بتخليه null بعد الـ dispatch
-            const fakeEvent = { currentTarget: row };
-            showMailActions(fakeEvent, m);
-        };
+        // === Floating Hover Action Bar (replaces dblclick) ===
+        row.addEventListener('mouseenter', function () {
+            clearTimeout(window._rowHideTimer);
+            window._rowHoverTimer = setTimeout(() => {
+                showMailActions({ currentTarget: row }, m);
+            }, 180);
+        });
+        row.addEventListener('mouseleave', function () {
+            clearTimeout(window._rowHoverTimer);
+            window._rowHideTimer = setTimeout(() => {
+                const bar = document.getElementById('rowHoverBar');
+                if (bar) bar.classList.remove('visible');
+            }, 160);
+        });
 
         // Single click action (show content and mark as read)
         row.onclick = (e) => {
@@ -1077,38 +1083,165 @@ function renderTable(data) {
                 }
             }
 
+            // === Build category color & keywords highlight ===
+            const URGENT_KEYWORDS = ['urgent', 'عاجل', 'critical', 'immediate', 'هام', 'خطير', 'error', 'alert', 'التعديل العاجل'];
+            const KEY_HIGHLIGHT = (m.keywords || m.sender || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+
+            // Highlight keywords and urgent words in content
+            let highlightedContent = processedContent;
+            KEY_HIGHLIGHT.forEach(kw => {
+                if (!kw) return;
+                const re = new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                highlightedContent = highlightedContent.replace(re, `<span class="mail-keyword-highlight">$1</span>`);
+            });
+            URGENT_KEYWORDS.forEach(kw => {
+                const re = new RegExp(`\\b(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'gi');
+                highlightedContent = highlightedContent.replace(re, `<span class="mail-keyword-urgent">$1</span>`);
+            });
+
+            // Author initial for footer avatar
+            const authorName = m.author || m.createdBy || 'Admin';
+            const authorInitial = authorName.charAt(0).toUpperCase();
+
+            // Date formatting
+            const mailDate = m.createdAt ? new Date(m.createdAt.seconds * 1000).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+
+            // Category label color
+            const catColors = { 'Urgent': '#e74c3c', 'New Policy': '#27ae60', 'Update': '#3498db', 'General': '#7f8c8d' };
+            const catColor = catColors[m.category] || targetColor;
+            const catBg = `linear-gradient(135deg, ${catColor}, ${catColor}cc)`;
+
+            // Live relative time
+            function relativeTime(ts) {
+                if (!ts) return '';
+                const d = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+                const diff = Math.floor((Date.now() - d) / 1000);
+                if (diff < 60) return 'منذ ثوان';
+                if (diff < 3600) return `منذ ${Math.floor(diff / 60)} دقيقة`;
+                if (diff < 86400) return `منذ ${Math.floor(diff / 3600)} ساعة`;
+                if (diff < 172800) return 'أمس';
+                if (diff < 604800) return `منذ ${Math.floor(diff / 86400)} أيام`;
+                return d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+            }
+            const liveTime = relativeTime(m.createdAt);
+
+            // Smart attachment HTML
+            let smartAttachHTML = '';
+            if (m.attachmentUrl) {
+                const url = m.attachmentUrl;
+                const ext = url.split('.').pop().toLowerCase().split('?')[0];
+                const attachColors = { pdf: '#e74c3c', doc: '#2980b9', docx: '#2980b9', xls: '#27ae60', xlsx: '#27ae60', jpg: '#e67e22', jpeg: '#e67e22', png: '#e67e22', gif: '#9b59b6' };
+                const aColor = attachColors[ext] || '#7f8c8d';
+                const aIcon = { pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊', jpg: '🖼️', jpeg: '🖼️', png: '🖼️' }[ext] || '📥';
+                smartAttachHTML = `<div style="margin-top:14px; padding:10px 14px; background:rgba(0,0,0,0.03); border-radius:10px; border-left:4px solid ${aColor}; display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">${aIcon}</span>
+                    <div><a href="${url}" target="_blank" style="font-weight:700; color:${aColor}; text-decoration:none; font-size:13px;">Open Attachment</a>
+                    <div style="font-size:11px; color:#aaa; text-transform:uppercase; letter-spacing:0.5px;">${ext.toUpperCase()}</div></div></div>`;
+            }
+
+            // Apply number highlighting + language detection
+            highlightedContent = enhanceMailContent(highlightedContent);
+            const contentDir = detectContentDirection(processedContent);
+
             const generatedMailBoxHTML = `
-                <div style="background: #f8f9fa; border: 1px solid #eaeaea; padding: 12px 18px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); position: relative;">
-                    ${m.historyLog && m.historyLog.length > 0 && isAdminSession ? `<div style="position: absolute; top: 12px; right: 18px; cursor: pointer; font-size: 20px; transition: transform 0.2s; z-index: 10;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'" onclick="showHistoryLog('${m.id}')" title="View Edit History">🕐</div>` : ''}
-                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-right: 35px;">
+                <!-- HEADER -->
+                <div class="mail-box-header">
+                    <div class="mail-box-meta">
                         ${innerTrashHtml}
-                        <span class="${glowClass}" style="background: ${targetColor}; padding: 4px 12px; border-radius: 6px; color: white; font-weight: bold; font-size: 13px;">
-                            ${m.category || 'General'}
-                        </span>
-                        <span style="color: #ddd;">|</span>
-                        <h2 style="margin: 0; color: #2c3e50; font-size: 18px; font-weight: 600;">${m.topic}</h2>
-                        <span style="color: #ddd;">|</span>
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="color: #7f8c8d; font-size: 12px; font-weight: bold; text-transform: uppercase;">Tags:</span>
-                            ${tagsHTML || '<span style="color:#aaa; font-style:italic; font-size:12px;">none</span>'}
+                        <span style="background:${catBg}; color:white; font-weight:700; font-size:12px; padding:4px 12px; border-radius:20px; letter-spacing:0.3px; box-shadow:0 2px 6px ${catColor}44;">${m.category || 'General'}</span>
+                        ${m.tags && m.tags.length > 0 ? m.tags.map(t => `<span style="background:rgba(0,0,0,0.06); color:#555; padding:3px 9px; border-radius:20px; font-size:11px;">#${t}</span>`).join('') : ''}
+                        <h2 class="mail-box-topic">${m.topic || ''}</h2>
+                    </div>
+                    <div class="mail-box-actions">
+                        ${m.historyLog && m.historyLog.length > 0 && isAdminSession ? `<button class="mail-box-action-btn" onclick="addRipple(event,this); showHistoryLog('${m.id}')" title="Edit History">🕐</button>` : ''}
+                        <button class="mail-box-minimize-btn" onclick="addRipple(event,this); toggleSidePanelMode()" title="Side Panel" style="font-size:12px;">┃□</button>
+                        <div class="font-size-ctrl">
+                            <button class="mail-box-action-btn" style="width:26px;height:26px;font-size:13px;"
+                                onmousedown="startFontSizeHold(-1)" onmouseup="stopFontSizeHold()" onmouseleave="stopFontSizeHold()" title="Decrease font">A₋</button>
+                            <span id="mailFontSizeVal">15</span>
+                            <button class="mail-box-action-btn" style="width:26px;height:26px;font-size:13px;"
+                                onmousedown="startFontSizeHold(1)" onmouseup="stopFontSizeHold()" onmouseleave="stopFontSizeHold()" title="Increase font">A⁺</button>
                         </div>
-                        <span style="color: #ddd;">|</span>
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="color: #7f8c8d; font-size: 12px; font-weight: bold; text-transform: uppercase;">Keywords:</span>
-                            ${(m.keywords || m.sender || "").split(',').map(k => k.trim() ? `<span style="color:#2980b9; font-weight:600; font-size:12px; background:rgba(41,128,185,0.1); padding:2px 8px; border-radius:4px;">${k.trim()}</span>` : '').join('') || '<span style="color:#aaa; font-style:italic; font-size:12px;">none</span>'}
-                        </div>
+                        <button class="mail-box-action-btn" onclick="addRipple(event,this); copyMailContent()" title="Copy content">📋</button>
+                        <button class="mail-box-action-btn" onclick="addRipple(event,this); window.print()" title="Print">🖨️</button>
+                        <button class="mail-box-action-btn" data-zen-btn onclick="addRipple(event,this); toggleMailZenMode(true)" title="Full Screen">⛶</button>
+                        <button class="mail-box-action-btn danger" onclick="addRipple(event,this); closeMailBox()" title="Close">✕</button>
                     </div>
                 </div>
-                ${scheduleHTML}
-                <div class="ql-editor" id="mailBoxContent" style="line-height: 1.8; font-size: 15px; color: #333; padding: 10px; word-wrap: break-word;">${processedContent}</div>
-                ${attachHTML}
-                ${receiptHTML}
+
+                <!-- BODY -->
+                <div class="mail-box-body-wrap">
+                    <div class="mail-box-body" id="mailBoxBody" onscroll="checkMailFade()">
+                        ${scheduleHTML}
+                        <div class="ql-editor" id="mailBoxContent" style="line-height:1.85; font-size:15px; color:#2c3e50; word-wrap:break-word; direction:${contentDir}; text-align:${contentDir === 'rtl' ? 'right' : 'left'}">${highlightedContent}</div>
+                        ${smartAttachHTML}
+                        ${receiptHTML}
+                    </div>
+                    <div class="mail-box-fade-bottom" id="mailBoxFade"></div>
+                    <div class="mail-box-scroll-arrow" id="mailBoxArrow" onclick="document.getElementById('mailBoxBody').scrollBy({top:120,behavior:'smooth'})">&#8964;</div>
+                    <div class="mail-box-scroll-top" id="mailBoxScrollTop" title="Back to top" onclick="document.getElementById('mailBoxBody').scrollTo({top:0,behavior:'smooth'})">↑</div>
+                </div>
+
+                <!-- FOOTER -->
+                <div class="mail-box-footer">
+                    <div class="mail-box-footer-author">
+                        <div class="author-avatar">${authorInitial}</div>
+                        <span>Published by <strong>${authorName}</strong> &nbsp;&middot;&nbsp; <span id="mailLiveTime" data-ts="${m.createdAt ? (m.createdAt.seconds || '') : ''}" style="color:#aaa;">${liveTime}</span></span>
+                        ${renderDeadlineChip(m.expiryDate || '')}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        ${(m.keywords || m.sender || '').split(',').filter(k => k.trim()).map(k => `<span style="background:rgba(41,128,185,0.1); color:#2980b9; font-weight:600; font-size:11px; padding:2px 8px; border-radius:4px;">${k.trim()}</span>`).join('')}
+                    </div>
+                </div>
             `;
             const dummyBox = document.createElement('div');
             dummyBox.innerHTML = generatedMailBoxHTML;
             const currentMailBox = document.getElementById("mailBox");
             if (currentMailBox.innerHTML !== dummyBox.innerHTML) {
                 currentMailBox.innerHTML = generatedMailBoxHTML;
+            }
+
+            // Set category data attribute for dynamic shadow
+            currentMailBox.setAttribute('data-category', m.category || 'General');
+
+            // Restore reading position
+            const savedPos = JSON.parse(localStorage.getItem('mailReadPos') || '{}');
+            const bodyEl = document.getElementById('mailBoxBody');
+            if (bodyEl && savedPos[m.id]) {
+                setTimeout(() => { bodyEl.scrollTop = savedPos[m.id]; }, 50);
+            }
+
+            // Save reading position on scroll
+            if (bodyEl) {
+                bodyEl.onscroll = () => {
+                    const pos = JSON.parse(localStorage.getItem('mailReadPos') || '{}');
+                    pos[m.id] = bodyEl.scrollTop;
+                    localStorage.setItem('mailReadPos', JSON.stringify(pos));
+                    checkMailFade();
+                };
+            }
+
+            // Restore font size
+            const savedFs = parseInt(localStorage.getItem('mailFontSize') || '15');
+            if (savedFs !== 15) {
+                const content = document.getElementById('mailBoxContent');
+                const fsVal = document.getElementById('mailFontSizeVal');
+                if (content) content.style.fontSize = savedFs + 'px';
+                if (fsVal) fsVal.textContent = savedFs;
+            }
+
+            // Initial fade check
+            setTimeout(checkMailFade, 80);
+
+            // Row lift animation
+            // Show the mail box with animation (Zero-State -> Visible)
+            if (!currentMailBox.classList.contains('visible')) {
+                currentMailBox.style.display = 'block';
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        currentMailBox.classList.add('visible');
+                    });
+                });
             }
 
             // ⭐ التعديل 2: Scroll to match (Fuzzy + Exact) Feature
@@ -1165,7 +1298,7 @@ function renderTable(data) {
                         readMails.push(m.id);
                         localStorage.setItem('readMails', JSON.stringify(readMails));
                     }
-                    
+
                     updateBadgeCount();
                     row.classList.remove("unread-row");
                 }
@@ -1198,11 +1331,11 @@ function renderTable(data) {
         if (window.currentlyOpenMailId) {
             const openedRow = tbody.querySelector(`tr[data-id="${window.currentlyOpenMailId}"]`);
             if (openedRow && document.getElementById('mailBox').innerHTML !== "") {
-                openedRow.onclick({ target: openedRow }); 
+                openedRow.onclick({ target: openedRow });
             }
         }
         updateBulkActionsBar();
-        return; 
+        return;
     }
 
     // إضافة كلاس التحديد (selected) للعنصر المفتوح حالياً قبل الاستبدال
@@ -1231,7 +1364,7 @@ function renderTable(data) {
     if (window.currentlyOpenMailId) {
         const openedRow = tbody.querySelector(`tr[data-id="${window.currentlyOpenMailId}"]`);
         if (openedRow && document.getElementById('mailBox').innerHTML !== "") {
-            openedRow.onclick({ target: openedRow }); 
+            openedRow.onclick({ target: openedRow });
         }
     }
 
@@ -1543,7 +1676,7 @@ function showSearchHistory() {
 
     box.innerHTML = listToRender.map(term => {
         const cleanTerm = term.replace('🔥 Top Search: ', '');
-        return `<div onclick="document.getElementById('searchInput').value='${cleanTerm}'; debouncedSearch('${cleanTerm}')">🕒 ${term}</div>`;
+        return `<div onclick="document.getElementById('searchInput').value='${cleanTerm}'; debouncedSearch('${cleanTerm}'); document.getElementById('searchHistoryBox').classList.remove('show');">🕒 ${term}</div>`;
     }).join('');
     box.classList.add('show');
 
@@ -1641,65 +1774,66 @@ async function toggleKeepInTrash(id, status) {
 function showMailActions(event, mail) {
     const currentRow = event.currentTarget;
     if (!currentRow) return;
-    const previewRow = currentRow.nextElementSibling;
 
-    // Track globally what is open
-    window.lastOpenActionMailId = mail.id;
+    const bar = document.getElementById('rowHoverBar');
+    if (!bar) return;
 
-    let existingActions = previewRow ? previewRow.nextElementSibling : null;
-    if (existingActions && existingActions.classList.contains('actions-container-row')) {
-        existingActions.remove();
-        window.lastOpenActionMailId = null;
-        return;
-    }
-
+    // Remove old actions-container-row if any
     document.querySelectorAll('.actions-container-row').forEach(el => el.remove());
 
-    const actionsWrapper = document.createElement('tr');
-    actionsWrapper.className = 'actions-container-row';
-
+    // Build buttons based on context
     let buttonsHTML = '';
-
     if (showingTrash) {
         if (isAdminSession) {
-            // ⭐ تعديل 8: أضفنا زرار الحذف النهائي للأدمن (مع تعديل الشكــل)
             buttonsHTML = `
-                <div class="actions-flex-wrapper">
-                    <div class="btn-restore-style" title="Restore this mail" onclick="restoreMail('${mail.id}')"><span>&#8617;</span></div>
-                    <div class="action-btn" style="border-color:#e74c3c; color:#e74c3c;" title="Delete Forever (cannot be undone)" onclick="askPermanentDelete('${mail.id}')"><span>✖</span></div>
-                </div>
+                <div class="action-btn btn-restore-style" title="Restore" onclick="restoreMail('${mail.id}')" style="width:36px;height:36px;"><span>&#8617;</span></div>
+                <div class="bar-sep"></div>
+                <div class="action-btn btn-delete" title="Delete Forever" onclick="askPermanentDelete('${mail.id}')" style="width:36px;height:36px;"><span>✖</span></div>
             `;
         } else {
             buttonsHTML = `
-                <div class="actions-flex-wrapper">
-                    <div class="btn-restore-style" title="Restore this mail" onclick="userRestoreMail('${mail.id}')"><span>&#8617;</span></div>
-                </div>
+                <div class="action-btn btn-restore-style" title="Restore" onclick="userRestoreMail('${mail.id}')" style="width:36px;height:36px;"><span>&#8617;</span></div>
             `;
         }
     } else {
         if (isAdminSession) {
             buttonsHTML = `
-                <div class="actions-flex-wrapper">
-                    <div class="action-btn" title="Export to Outlook" onclick="exportToOutlook('${mail.id}')"><span>✉️</span></div>
-                    <div class="action-btn" title="Clone / Duplicate" onclick="cloneMail('${mail.id}')"><span>📋</span></div>
-                    <div class="action-btn" title="Edit this Mail" onclick="editMail('${mail.id}')"><span>✏️</span></div>
-                    <div class="action-btn btn-delete" title="Delete for Everyone" onclick="askDeleteMail('${mail.id}')"><span>🗑️</span></div>
-                    <div class="action-btn btn-pin ${mail.isPinned ? 'active' : ''}" title="Pin for Everyone" onclick="pinMail('${mail.id}')"><span>📌</span></div>
-                </div>
+                <div class="action-btn" title="Export to Outlook" onclick="exportToOutlook('${mail.id}')" style="width:36px;height:36px;"><span>✉️</span></div>
+                <div class="action-btn" title="Clone / Duplicate" onclick="cloneMail('${mail.id}')" style="width:36px;height:36px;"><span>📋</span></div>
+                <div class="bar-sep"></div>
+                <div class="action-btn" title="Edit" onclick="editMail('${mail.id}')" style="width:36px;height:36px;"><span>✏️</span></div>
+                <div class="action-btn btn-delete" title="Delete for Everyone" onclick="askDeleteMail('${mail.id}')" style="width:36px;height:36px;"><span>🗑️</span></div>
+                <div class="bar-sep"></div>
+                <div class="action-btn btn-pin ${mail.isPinned ? 'active' : ''}" title="Pin for Everyone" onclick="pinMail('${mail.id}')" style="width:36px;height:36px;"><span>📌</span></div>
             `;
         } else {
             buttonsHTML = `
-                <div class="actions-flex-wrapper">
-                    <div class="action-btn btn-delete" title="Delete for your profile" onclick="askDeleteMail('${mail.id}', 'user')"><span>🗑️</span></div>
-                    <div class="action-btn btn-pin ${userPinned.includes(mail.id) ? 'active' : ''}" title="Pin to your profile" onclick="toggleUserPin('${mail.id}')"><span>📌</span></div>
-                    <div class="action-btn btn-fav ${userFavorites.includes(mail.id) ? 'active' : ''}" title="Add to Favorites" onclick="toggleFav('${mail.id}')"><span>★</span></div>
-                </div>
+                <div class="action-btn btn-delete" title="Delete for your profile" onclick="askDeleteMail('${mail.id}', 'user')" style="width:36px;height:36px;"><span>🗑️</span></div>
+                <div class="bar-sep"></div>
+                <div class="action-btn btn-pin ${userPinned.includes(mail.id) ? 'active' : ''}" title="Pin to your profile" onclick="toggleUserPin('${mail.id}')" style="width:36px;height:36px;"><span>📌</span></div>
+                <div class="action-btn btn-fav ${userFavorites.includes(mail.id) ? 'active' : ''}" title="Add to Favorites" onclick="toggleFav('${mail.id}')" style="width:36px;height:36px;"><span>★</span></div>
             `;
         }
     }
 
-    actionsWrapper.innerHTML = `<td colspan="${getTableColspan()}" style="padding:0; border:none; text-align:right;">${buttonsHTML}</td>`;
-    if (previewRow) previewRow.after(actionsWrapper);
+    bar.innerHTML = buttonsHTML;
+
+    // Position bar: center-right over the row
+    const rect = currentRow.getBoundingClientRect();
+    const barW = isAdminSession ? (showingTrash ? 120 : 260) : (showingTrash ? 80 : 200);
+    let left = rect.right - barW - 16;
+    if (left < 8) left = 8;
+    bar.style.left = left + 'px';
+    bar.style.top = (rect.top + (rect.height - 46) / 2) + 'px';
+
+    bar.classList.add('visible');
+    window.lastOpenActionMailId = mail.id;
+
+    // Keep bar visible when mouse is over it
+    bar.onmouseenter = () => clearTimeout(window._rowHideTimer);
+    bar.onmouseleave = () => {
+        window._rowHideTimer = setTimeout(() => bar.classList.remove('visible'), 160);
+    };
 }
 
 // ⭐ تعديل 4: تحديث زرار Trash في الـ Watermark Menu
@@ -2190,6 +2324,518 @@ function closeAddPanel() {
     cancelEdit();
 }
 
+// ============================================================
+// ===  MAIL BOX — Premium Functions (Zero-State / Zen Mode) ===
+// ============================================================
+
+/** Close the mail box (reset to zero-state) */
+/** Close the mail box — if in Zen Mode, exit zen first; second press closes box */
+function closeMailBox() {
+    const box = document.getElementById('mailBox');
+    if (!box) return;
+
+    // If currently in Zen Mode, just exit zen mode (don't close the box)
+    if (box.classList.contains('zen-mode')) {
+        toggleMailZenMode(false);
+        return;
+    }
+
+    // Otherwise fully close the mail box
+    box.classList.remove('visible', 'minimized', 'floating');
+    box.style.opacity = '0';
+    box.style.transform = 'translateY(20px)';
+    setTimeout(() => {
+        box.style.display = 'none';
+        box.style.opacity = '';
+        box.style.transform = '';
+        box.innerHTML = '<h3 id="mailPlaceholder" style="display:none;">Select a mail</h3>';
+        box.removeAttribute('data-category');
+    }, 380);
+    window.currentlyOpenMailId = null;
+}
+
+/** Toggle Zen Mode — 84vw centered, icon swaps to restore */
+function toggleMailZenMode(enable) {
+    const box = document.getElementById('mailBox');
+    const overlay = document.getElementById('mailBoxOverlay');
+    if (!box) return;
+
+    const zenBtn = box.querySelector('[data-zen-btn]');
+
+    if (enable) {
+        box.classList.add('zen-mode');
+        box.classList.remove('minimized');
+        if (overlay) { overlay.style.display = 'block'; }
+        document.body.style.overflow = 'hidden';
+        if (zenBtn) { zenBtn.textContent = '⊡'; zenBtn.title = 'Exit Full Screen'; }
+        // Close overlay click exits zen
+        if (overlay) overlay.onclick = () => toggleMailZenMode(false);
+    } else {
+        box.classList.remove('zen-mode');
+        if (overlay) { overlay.style.display = 'none'; overlay.onclick = null; }
+        document.body.style.overflow = '';
+        if (zenBtn) { zenBtn.textContent = '⛶'; zenBtn.title = 'Full Screen'; }
+    }
+}
+
+
+/** Glassmorphism: add "floating" class when mail box is sticky over content */
+(function initMailBoxScrollEffect() {
+    window.addEventListener('scroll', () => {
+        const box = document.getElementById('mailBox');
+        if (!box || !box.classList.contains('visible')) return;
+        const rect = box.getBoundingClientRect();
+        if (rect.top <= 16) {
+            box.classList.add('floating');
+        } else {
+            box.classList.remove('floating');
+        }
+    }, { passive: true });
+})();
+
+/** Fade gradient — hide when scrolled to bottom, show back-to-top when scrolled down */
+function checkMailFade() {
+    const body = document.getElementById('mailBoxBody');
+    const fade = document.getElementById('mailBoxFade');
+    const arrow = document.getElementById('mailBoxArrow');
+    const topBtn = document.getElementById('mailBoxScrollTop');
+    if (!body || !fade) return;
+    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 10;
+    const scrolledDown = body.scrollTop > 60;
+    // Fade + down arrow
+    if (atBottom) {
+        fade.classList.add('hidden');
+        if (arrow) arrow.classList.add('hidden');
+    } else {
+        fade.classList.remove('hidden');
+        if (arrow) arrow.classList.remove('hidden');
+    }
+    // Back to top
+    if (topBtn) {
+        scrolledDown ? topBtn.classList.add('visible') : topBtn.classList.remove('visible');
+    }
+}
+
+/** Font size — supports long press to hold and continuously resize */
+let _fontSizeInterval = null;
+function changeMailFontSize(delta) {
+    const content = document.getElementById('mailBoxContent');
+    const fsVal = document.getElementById('mailFontSizeVal');
+    if (!content) return;
+    let current = parseInt(content.style.fontSize || '15');
+    current = Math.min(24, Math.max(11, current + delta));
+    content.style.fontSize = current + 'px';
+    if (fsVal) fsVal.textContent = current;
+    localStorage.setItem('mailFontSize', current);
+}
+
+function startFontSizeHold(delta) {
+    changeMailFontSize(delta);
+    _fontSizeInterval = setInterval(() => changeMailFontSize(delta), 120);
+}
+
+function stopFontSizeHold() {
+    clearInterval(_fontSizeInterval);
+    _fontSizeInterval = null;
+}
+
+/** Ripple effect on action buttons */
+function addRipple(e, btn) {
+    const ripple = document.createElement('span');
+    ripple.classList.add('ripple');
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+    ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove());
+}
+
+/** Confetti — HDB green palette, no sound */
+function launchMailConfetti() {
+    let canvas = document.getElementById('mailConfettiCanvas');
+    if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.id = 'mailConfettiCanvas';
+        document.body.appendChild(canvas);
+    }
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    canvas.style.opacity = '1';
+    const ctx = canvas.getContext('2d');
+    const colors = ['#2e7d32', '#27ae60', '#52c41a', '#a8e063', '#ffffff', '#b8f0c8'];
+    const particles = Array.from({ length: 80 }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * -100,
+        r: Math.random() * 7 + 3,
+        d: Math.random() * 80 + 10,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        tilt: Math.random() * 10 - 5,
+        tiltSpeed: Math.random() * 0.1 + 0.05,
+        speed: Math.random() * 3 + 1.5
+    }));
+    let frame = 0;
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+            p.y += p.speed;
+            p.tilt += p.tiltSpeed;
+            p.x += Math.sin(p.tilt) * 1.5;
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y, p.r, p.r * 0.5, p.tilt, 0, 2 * Math.PI);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+        });
+        frame++;
+        if (frame < 120) requestAnimationFrame(draw);
+        else {
+            canvas.style.opacity = '0';
+            setTimeout(() => { ctx.clearRect(0, 0, canvas.width, canvas.height); }, 400);
+        }
+    }
+    draw();
+}
+
+/** Keyboard navigation — arrow up/down between mail rows */
+(function initKeyboardNav() {
+    let kbIndex = -1;
+    document.addEventListener('keydown', (e) => {
+        const rows = [...document.querySelectorAll('#tableBody tr[data-id]:not(.preview)')];
+        if (!rows.length) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            // Remove old focus
+            rows.forEach(r => r.classList.remove('kb-focused'));
+            if (e.key === 'ArrowDown') kbIndex = Math.min(kbIndex + 1, rows.length - 1);
+            else kbIndex = Math.max(kbIndex - 1, 0);
+            const target = rows[kbIndex];
+            if (target) {
+                target.classList.add('kb-focused');
+                target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+        if (e.key === 'Enter' && kbIndex >= 0) {
+            const target = rows[kbIndex];
+            if (target) target.click();
+        }
+        if (e.key === 'Escape') closeMailBox();
+    });
+})();
+
+/** Live time updater — updates every 60s */
+(function initLiveTimeUpdater() {
+    function updateTimes() {
+        const el = document.getElementById('mailLiveTime');
+        if (!el) return;
+        const ts = el.getAttribute('data-ts');
+        if (!ts) return;
+        const d = new Date(parseInt(ts) * 1000);
+        const diff = Math.floor((Date.now() - d) / 1000);
+        let txt = '';
+        if (diff < 60) txt = 'منذ ثوان';
+        else if (diff < 3600) txt = `منذ ${Math.floor(diff / 60)} دقيقة`;
+        else if (diff < 86400) txt = `منذ ${Math.floor(diff / 3600)} ساعة`;
+        else if (diff < 172800) txt = 'أمس';
+        else if (diff < 604800) txt = `منذ ${Math.floor(diff / 86400)} أيام`;
+        else txt = d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+        el.textContent = txt;
+    }
+    setInterval(updateTimes, 60000);
+})();
+
+// ============================================================
+// ===  NEW PREMIUM FEATURES — Round 2
+// ============================================================
+
+/** Peek Preview — hover card on table rows */
+(function initPeekPreview() {
+    let card = null;
+    let hideTimer = null;
+
+    function showPeek(e, m) {
+        clearTimeout(hideTimer);
+        if (!card) {
+            card = document.createElement('div');
+            card.className = 'peek-preview-card';
+            document.body.appendChild(card);
+        }
+        const preview = (m.content || '').replace(/<[^>]*>/g, '').substring(0, 160);
+        card.innerHTML = `
+            <div class="peek-topic">${m.topic || ''}</div>
+            <div class="peek-body">${preview}...</div>
+        `;
+        card.style.display = 'block';
+        positionPeek(e);
+    }
+
+    function positionPeek(e) {
+        if (!card) return;
+        const x = e.clientX + 14;
+        const y = e.clientY - 10;
+        const cardW = 320;
+        const cardH = 110;
+        card.style.left = (x + cardW > window.innerWidth ? x - cardW - 20 : x) + 'px';
+        card.style.top = (y + cardH > window.innerHeight ? y - cardH : y) + 'px';
+    }
+
+    function hidePeek() {
+        hideTimer = setTimeout(() => {
+            if (card) card.style.display = 'none';
+        }, 120);
+    }
+
+    document.addEventListener('mouseover', (e) => {
+        const row = e.target.closest('#tableBody tr[data-id]:not(.preview)');
+        if (!row) { hidePeek(); return; }
+        const id = row.getAttribute('data-id');
+        const m = allMails.find(x => x.id === id);
+        if (!m) return;
+        showPeek(e, m);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (card && card.style.display !== 'none') positionPeek(e);
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        const row = e.target.closest('#tableBody tr[data-id]:not(.preview)');
+        if (row) hidePeek();
+    });
+})();
+
+/** Toggle Minimize mail box — fold to header strip */
+function toggleMailMinimize() {
+    const box = document.getElementById('mailBox');
+    if (!box) return;
+    const btn = box.querySelector('.mail-box-minimize-btn');
+    if (box.classList.contains('minimized')) {
+        box.classList.remove('minimized');
+        if (btn) btn.textContent = '−';
+        const hdr = box.querySelector('.mail-box-header');
+        if (hdr) hdr.onclick = null;
+    } else {
+        if (box.classList.contains('zen-mode')) toggleMailZenMode(false);
+        box.classList.add('minimized');
+        if (btn) btn.textContent = '□';
+        const hdr = box.querySelector('.mail-box-header');
+        if (hdr) hdr.onclick = (e) => {
+            if (!e.target.closest('.mail-box-action-btn') && !e.target.closest('.mail-box-minimize-btn'))
+                toggleMailMinimize();
+        };
+    }
+}
+
+/** Toggle Side Panel Mode */
+function toggleSidePanelMode() {
+    const box = document.getElementById('mailBox');
+    if (!box) return;
+    if (box.classList.contains('side-panel')) {
+        box.classList.remove('side-panel');
+        document.body.classList.remove('side-panel-open');
+    } else {
+        // Exit other modes first
+        box.classList.remove('zen-mode', 'minimized');
+        toggleMailZenMode(false);
+        box.classList.add('side-panel');
+        document.body.classList.add('side-panel-open');
+    }
+}
+
+/** Updated copyMailContent — with icon feedback */
+function copyMailContent() {
+    const contentEl = document.getElementById('mailBoxContent');
+    if (!contentEl) return;
+    const text = contentEl.innerText || contentEl.textContent || '';
+
+    // Find the copy button in action bar
+    const btns = document.querySelectorAll('.mail-box-action-btn');
+    let copyBtn = null;
+    btns.forEach(b => { if (b.title === 'Copy content') copyBtn = b; });
+
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('✅ Mail content copied!', 'success');
+        if (copyBtn) {
+            const orig = copyBtn.innerHTML;
+            copyBtn.innerHTML = '✅';
+            copyBtn.style.background = '#27ae60';
+            copyBtn.style.color = 'white';
+            setTimeout(() => {
+                copyBtn.innerHTML = orig;
+                copyBtn.style.background = '';
+                copyBtn.style.color = '';
+            }, 2000);
+        }
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('✅ Copied!', 'success');
+    });
+}
+
+/** Number/Term highlighting — DISABLED (user feedback: disrupts mail layout) */
+function enhanceMailContent(html) {
+    return html; // pass-through only
+}
+
+/** Detect if content is mostly Arabic (RTL) */
+function detectContentDirection(htmlContent) {
+    const text = htmlContent.replace(/<[^>]*>/g, '');
+    const arabicChars = (text.match(/[\u0600-\u06FF]/g) || []).length;
+    const totalChars = text.replace(/\s/g, '').length;
+    return (totalChars > 0 && arabicChars / totalChars > 0.4) ? 'rtl' : 'ltr';
+}
+
+// ============================================================
+// ===  AGENT PRIORITY STAR (per-agent, localStorage)
+// ============================================================
+
+/** Toggle star priority for a mail (agent only) */
+function toggleAgentPriority(mailId, starEl) {
+    const key = `agentPriority_${currentUser || 'agent'}`;
+    const stars = JSON.parse(localStorage.getItem(key) || '{}');
+    const isActive = stars[mailId];
+    if (isActive) {
+        delete stars[mailId];
+        starEl.classList.remove('active');
+        starEl.title = 'Mark as Important';
+    } else {
+        stars[mailId] = true;
+        starEl.classList.add('active');
+        starEl.title = 'Remove Priority';
+    }
+    localStorage.setItem(key, JSON.stringify(stars));
+    // Re-render table to apply visual update
+    renderTable();
+}
+
+/** Check if a mail is starred by current agent */
+function isMailStarred(mailId) {
+    const key = `agentPriority_${currentUser || 'agent'}`;
+    const stars = JSON.parse(localStorage.getItem(key) || '{}');
+    return !!stars[mailId];
+}
+
+// ============================================================
+// ===  TAG SUGGESTIONS (Admin Compose Form)
+// ============================================================
+
+function showTagSuggestions(inputEl) {
+    const box = document.getElementById('tagSuggestionsBox');
+    if (!box) return;
+
+    const raw = inputEl.value;
+    const parts = raw.split(',');
+    const typing = parts[parts.length - 1].trim().toLowerCase();
+
+    if (!typing) { box.style.display = 'none'; return; }
+
+    // Collect all existing tags from allMails
+    const allTags = new Set();
+    allMails.forEach(m => { if (m.tags) m.tags.forEach(t => allTags.add(t)); });
+
+    const matches = [...allTags].filter(t => t.toLowerCase().startsWith(typing) && t.toLowerCase() !== typing);
+
+    if (!matches.length) { box.style.display = 'none'; return; }
+
+    box.innerHTML = matches.slice(0, 8).map(t => `
+        <div onclick="acceptTagSuggestion('${t}', document.getElementById('addTags'))"
+             style="padding:7px 12px; cursor:pointer; font-size:13px; color:#2e7d32; font-weight:600; border-bottom:1px solid rgba(46,125,50,0.07);"
+             onmouseover="this.style.background='rgba(46,125,50,0.07)'"
+             onmouseout="this.style.background=''">
+            + ${t}
+        </div>`).join('');
+    box.style.display = 'block';
+
+    // Close on outside click
+    document.addEventListener('click', () => { box.style.display = 'none'; }, { once: true });
+}
+
+function acceptTagSuggestion(tag, inputEl) {
+    const parts = inputEl.value.split(',');
+    parts[parts.length - 1] = ' ' + tag;
+    inputEl.value = parts.join(',').replace(/^,\s*/, '') + ', ';
+    inputEl.focus();
+    const box = document.getElementById('tagSuggestionsBox');
+    if (box) box.style.display = 'none';
+}
+
+// ============================================================
+// ===  COMPACT CARD MODE (Inline expand in table)
+// ============================================================
+
+let _compactOpenId = null;
+
+function toggleCompactCard(mailId) {
+    const tbody = document.getElementById('tableBody');
+    if (!tbody) return;
+
+    // If same mail, close it
+    if (_compactOpenId === mailId) {
+        const existing = document.getElementById('compactCard_' + mailId);
+        if (existing) existing.parentElement.remove();
+        _compactOpenId = null;
+        return;
+    }
+
+    // Close any previously open compact card
+    if (_compactOpenId) {
+        const old = document.getElementById('compactCard_' + _compactOpenId);
+        if (old) old.parentElement.remove();
+    }
+
+    const m = allMails.find(x => x.id === mailId);
+    if (!m) return;
+    _compactOpenId = mailId;
+
+    const row = tbody.querySelector(`tr[data-id="${mailId}"]`);
+    if (!row) return;
+
+    const contentClean = (m.content || '').replace(/<[^>]*>/g, '').substring(0, 400);
+    const colSpan = row.cells.length || 6;
+
+    const cardRow = document.createElement('tr');
+    cardRow.className = 'compact-card-row';
+    cardRow.innerHTML = `<td colspan="${colSpan}" style="padding:0; border:none;">
+        <div class="compact-mail-card" id="compactCard_${mailId}">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong style="font-size:13px; color:#1a2e1b;">${m.topic || ''}</strong>
+                <button onclick="document.getElementById('compactCard_${mailId}').closest('tr').remove(); _compactOpenId=null;"
+                    style="background:none; border:none; cursor:pointer; color:#aaa; font-size:16px; padding:0 4px;">&times;</button>
+            </div>
+            <p style="font-size:12px; color:#555; line-height:1.7; margin:0 0 8px;">${contentClean}${m.content && m.content.length > 400 ? '...' : ''}</p>
+            <div style="display:flex; gap:8px; font-size:11px; color:#aaa;">
+                <span>📅 ${m.createdAt ? new Date(m.createdAt.seconds * 1000).toLocaleDateString('ar-EG') : ''}</span>
+                ${m.content && m.content.length > 800 ? `<button onclick="document.getElementById('compactCard_${mailId}').closest('tr').remove(); _compactOpenId=null; document.querySelector('[data-id=\\'${mailId}\\']').click();" style="background:rgba(46,125,50,0.1); color:#2e7d32; border:none; border-radius:6px; padding:2px 8px; cursor:pointer; font-size:11px;">Open Full ↗</button>` : ''}
+            </div>
+        </div>
+    </td>`;
+
+    row.after(cardRow);
+}
+
+// ============================================================
+// ===  READ BY DEADLINE (Admin View in Mail Box)
+// ============================================================
+
+/** Show deadline countdown in mail box footer — admin only */
+function renderDeadlineChip(expiryDateStr) {
+    if (!expiryDateStr || !isAdminSession) return '';
+    const expiry = new Date(expiryDateStr);
+    const now = new Date();
+    const diff = expiry - now;
+    if (diff < 0) return `<span style="background:#e74c3c; color:white; font-size:11px; padding:2px 8px; border-radius:20px; font-weight:700;">⏰ Expired</span>`;
+    const days = Math.floor(diff / 86400000);
+    const hrs = Math.floor((diff % 86400000) / 3600000);
+    const color = days < 1 ? '#e74c3c' : days < 3 ? '#e67e22' : '#27ae60';
+    return `<span style="background:${color}; color:white; font-size:11px; padding:3px 10px; border-radius:20px; font-weight:700;">⏰ ${days > 0 ? days + 'd ' : ''}${hrs}h left</span>`;
+}
+
+
 function updateAdminStats() {
     if (!isAdminSession) return;
     const total = allMails.length;
@@ -2403,10 +3049,11 @@ async function confirmReadMail(id, buttonEl, version) {
     agentConfirmedVersions[id] = version;
     localStorage.setItem('agentConfirmedVersions', JSON.stringify(agentConfirmedVersions));
 
-    // Effect: Fade out button
+    // Effect: Fade out button + Confetti
     buttonEl.style.opacity = '0.5';
     buttonEl.disabled = true;
     buttonEl.innerText = '✅ Confirmed!';
+    launchMailConfetti();
 
     // Fade and remove after delay
     setTimeout(() => {
@@ -2504,6 +3151,23 @@ function showCustomModal(title, content) {
 }
 
 // ⭐ تعديل 6: عرض نافذة الـ History
+/** Save admin private note to localStorage */
+function saveAdminNote(mailId) {
+    const ta = document.getElementById('adminQuickNote');
+    if (!ta) return;
+    const notes = JSON.parse(localStorage.getItem('adminNotes') || '{}');
+    notes[mailId] = ta.value.trim();
+    localStorage.setItem('adminNotes', JSON.stringify(notes));
+    // Visual feedback
+    const btn = ta.nextElementSibling;
+    if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✅ Saved!';
+        btn.style.background = 'linear-gradient(135deg,#27ae60,#2ecc71)';
+        setTimeout(() => { btn.textContent = orig; btn.style.background = 'linear-gradient(135deg,#2e7d32,#27ae60)'; }, 1500);
+    }
+}
+
 function showHistoryLog(id) {
     const m = allMails.find(x => x.id === id);
     if (!m || !m.historyLog || m.historyLog.length === 0) return;
@@ -3135,7 +3799,7 @@ function showAgentPollModal(question, options, broadcastId) {
     const modal = document.createElement('div');
     modal.id = 'agent-poll-modal';
     const optBtns = options.map((opt, i) => `
-        <button onclick="submitPollVote('${broadcastId}', '${opt.replace(/'/g,"\\'")}', this.closest('#agent-poll-modal'))"
+        <button onclick="submitPollVote('${broadcastId}', '${opt.replace(/'/g, "\\'")}', this.closest('#agent-poll-modal'))"
             style="display:block;width:100%;margin-bottom:10px;padding:12px;border-radius:10px;border:1px solid rgba(167,139,250,0.4);background:rgba(167,139,250,0.1);color:#a78bfa;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.2s;">
             ${String.fromCodePoint(0x1F1E6 + i)} ${opt}
         </button>`).join('');
@@ -3187,7 +3851,7 @@ function acknowledgeCommand(cmdId, modalId) {
     const el = document.getElementById(modalId);
     if (el) el.remove();
     if (typeof db !== 'undefined' && cmdId) {
-        db.collection('systemCommands').doc(cmdId).update({ active: false }).catch(() => {});
+        db.collection('systemCommands').doc(cmdId).update({ active: false }).catch(() => { });
     }
 }
 
@@ -3207,7 +3871,7 @@ function scrollToMail(mailCode) {
             row.style.transition = 'background 0.3s';
             row.style.background = 'rgba(46,204,113,0.25)';
             setTimeout(() => row.style.background = '', 3000);
-            
+
             // Scroll to the opened mailbox directly for better UX
             setTimeout(() => {
                 const mailBox = document.getElementById('mailBox');
@@ -3223,6 +3887,13 @@ function scrollToMail(mailCode) {
 }
 
 
+// ─── Close watermark menu helper ─────────────────────────────────
+function closeWatermarkMenu() {
+    const menu = document.getElementById('watermarkMenu');
+    const icon = document.querySelector('.watermark-icon');
+    if (menu) menu.classList.remove('show');
+    if (icon) icon.classList.remove('rotate');
+}
 // ─── Close watermark menu helper ─────────────────────────────────
 function closeWatermarkMenu() {
     const menu = document.getElementById('watermarkMenu');
