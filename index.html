@@ -386,78 +386,82 @@
     <!-- Mail Box Zen Mode Overlay -->
     <div id="mailBoxOverlay" onclick="toggleMailZenMode(false)"></div>
 
-    <div class="mail-box" id="mailBox">
-        <h3 id="mailPlaceholder" style="display:none;">Select a mail</h3>
-    </div>
-
-    <!-- ⭐ تعديل 4: مؤشر اله فين (يظهر بس لما نكون في الترَاش) -->
-    <div style="width: 94%; margin: 8px auto 0; display: flex; justify-content: space-between; align-items: center;">
-        <span id="currentViewLabel"
-            style="display:none; font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 20px; background: rgba(231,76,60,0.1); color: #c0392b; border: 1px solid rgba(231,76,60,0.3); transition: all 0.3s;">🗑️
-            Trash</span>
-        <div id="bulkPermanentDeleteBar" style="display:none; margin-left: auto;">
-            <button onclick="bulkPermanentDelete()"
-                style="background:#c0392b; color:white; border:none; padding:5px 14px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">🔥
-                Delete Forever Selected</button>
+    <div id="pageLayoutArea">
+        <div class="mail-box" id="mailBox">
+            <h3 id="mailPlaceholder" style="display:none;">Select a mail</h3>
         </div>
-    </div>
 
-    <table id="table" style="width: 100%; border-collapse: collapse; margin-top: 8px;">
-        <thead>
-            <tr>
-                <th class="td-bulk-cb" style="display:none; width: 40px; text-align:center;">
-                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
-                </th>
-                <th style="color:white;">
-                    <div class="dropdown" onclick="toggleDropdown(event, 'code')">
-                        <div class="header-flex">
-                            <span class="column-title">Code | Status</span>
-                            <span class="filter-icon">🔍</span>
-                        </div>
-                        <div class="dropdown-content" id="codeDropdown">
-                            <input type="text" class="menu-search" placeholder="Search..."
-                                onkeyup="filterDropdown(this, 'code')">
-                            <div class="menu-items" id="codeItems"></div>
-                        </div>
-                    </div>
-                </th>
+        <div id="tableContentArea" style="flex: 1; transition: width 0.38s ease; width: 100%; min-width: 0;">
+            <!-- ⭐ تعديل 4: مؤشر اله فين (يظهر بس لما نكون في الترَاش) -->
+            <div style="width: 94%; margin: 8px auto 0; display: flex; justify-content: space-between; align-items: center;">
+                <span id="currentViewLabel"
+                    style="display:none; font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 20px; background: rgba(231,76,60,0.1); color: #c0392b; border: 1px solid rgba(231,76,60,0.3); transition: all 0.3s;">🗑️
+                    Trash</span>
+                <div id="bulkPermanentDeleteBar" style="display:none; margin-left: auto;">
+                    <button onclick="bulkPermanentDelete()"
+                        style="background:#c0392b; color:white; border:none; padding:5px 14px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">🔥
+                        Delete Forever Selected</button>
+                </div>
+            </div>
 
-                <th>
-                    <div class="dropdown" onclick="toggleDropdown(event, 'topic')">
-                        <div class="header-flex">
-                            <span class="column-title">Topic</span>
-                            <span class="filter-icon">🔍</span>
-                        </div>
-                        <div class="dropdown-content" id="topicDropdown">
-                            <input type="text" class="menu-search" placeholder="Search..."
-                                onkeyup="filterDropdown(this, 'topic')">
-                            <div class="menu-items" id="topicItems"></div>
-                        </div>
-                    </div>
-                </th>
+            <table id="table" style="width: 100%; border-collapse: collapse; margin-top: 8px;">
+                <thead>
+                    <tr>
+                        <th class="td-bulk-cb" style="display:none; width: 40px; text-align:center;">
+                            <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+                        </th>
+                        <th style="color:white;">
+                            <div class="dropdown" onclick="toggleDropdown(event, 'code')">
+                                <div class="header-flex">
+                                    <span class="column-title">Code | Status</span>
+                                    <span class="filter-icon">🔍</span>
+                                </div>
+                                <div class="dropdown-content" id="codeDropdown">
+                                    <input type="text" class="menu-search" placeholder="Search..."
+                                        onkeyup="filterDropdown(this, 'code')">
+                                    <div class="menu-items" id="codeItems"></div>
+                                </div>
+                            </div>
+                        </th>
 
-                <th>Main Idea</th>
+                        <th>
+                            <div class="dropdown" onclick="toggleDropdown(event, 'topic')">
+                                <div class="header-flex">
+                                    <span class="column-title">Topic</span>
+                                    <span class="filter-icon">🔍</span>
+                                </div>
+                                <div class="dropdown-content" id="topicDropdown">
+                                    <input type="text" class="menu-search" placeholder="Search..."
+                                        onkeyup="filterDropdown(this, 'topic')">
+                                    <div class="menu-items" id="topicItems"></div>
+                                </div>
+                            </div>
+                        </th>
 
-                <th>
-                    <div class="dropdown" onclick="toggleDropdown(event, 'keywords')">
-                        <div class="header-flex">
-                            <span class="column-title">Key words</span>
-                            <span class="filter-icon">🔍</span>
-                        </div>
-                        <div class="dropdown-content" id="keywordsDropdown">
-                            <input type="text" class="menu-search" placeholder="Search..."
-                                onkeyup="filterDropdown(this, 'keywords')">
-                            <div class="menu-items" id="keywordsItems"></div>
-                        </div>
-                    </div>
-                </th>
-            </tr>
-        </thead>
-        <tbody id="tableBody">
-        </tbody>
-    </table>
+                        <th>Main Idea</th>
 
-    <script src="script.js?v=14"></script>
+                        <th>
+                            <div class="dropdown" onclick="toggleDropdown(event, 'keywords')">
+                                <div class="header-flex">
+                                    <span class="column-title">Key words</span>
+                                    <span class="filter-icon">🔍</span>
+                                </div>
+                                <div class="dropdown-content" id="keywordsDropdown">
+                                    <input type="text" class="menu-search" placeholder="Search..."
+                                        onkeyup="filterDropdown(this, 'keywords')">
+                                    <div class="menu-items" id="keywordsItems"></div>
+                                </div>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                </tbody>
+            </table>
+        </div><!-- /#tableContentArea -->
+    </div><!-- /#pageLayoutArea -->
+
+    <script src="script.js?v=18"></script>
     <div id="toast" class="toast-msg"></div>
     <div id="rowHoverBar"></div>
 

@@ -842,18 +842,12 @@ body.side-panel-open #pageLayoutArea {
     gap: 0;
 }
 
-/* Table shrinks gracefully */
-body.side-panel-open #table {
+/* Table wrapper shrinks gracefully */
+body.side-panel-open #tableContentArea {
     width: 58% !important;
     min-width: 0;
     flex: 0 0 58%;
     transition: all 0.38s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Table helper elements (controls bar, label) also shrink */
-body.side-panel-open #pageLayoutArea > div:not(#mailBox) {
-    width: 58% !important;
-    transition: width 0.38s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Mail box becomes an inline side panel */
