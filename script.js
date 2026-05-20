@@ -13,11 +13,19 @@ const db = firebase.firestore();
 let allMails = [];
 let showingTrash = false;
 let isAdminSession = false; // Phase 1: Admin session state
-let userFavorites = JSON.parse(localStorage.getItem('userFavs') || '[]'); // Phase 1: Local favorites
-let userPinned = JSON.parse(localStorage.getItem('userPinned') || '[]'); // Personal Pinned
+// ✅ FIX #15: user-scoped keys — loaded after login in initUserScopedStorage()
+let userFavorites = []; // Will be loaded per-user after login
+let userPinned = []; // Will be loaded per-user after login
 let userDeleted = JSON.parse(localStorage.getItem('userDeleted') || '[]'); // Personal Trash
 let readMails = JSON.parse(localStorage.getItem('readMails') || '[]'); // Read status tracking
 let searchHistory = JSON.parse(localStorage.getItem('hdbSearchHistory') || '[]');
+// ✅ FIX #15: Helper to get user-scoped localStorage keys
+function getUserFavKey()  { return `userFavs_${currentUser && currentUser.username ? currentUser.username : 'guest'}`; }
+function getUserPinKey()  { return `userPinned_${currentUser && currentUser.username ? currentUser.username : 'guest'}`; }
+function initUserScopedStorage() {
+    userFavorites = JSON.parse(localStorage.getItem(getUserFavKey()) || '[]');
+    userPinned    = JSON.parse(localStorage.getItem(getUserPinKey()) || '[]');
+}
 const defaultTabTitle = document.title || "HDB - Quality Team Updates";
 let tabAlertInterval = null;
 let previousUnreadCount = null;
@@ -44,23 +52,33 @@ db.collection("appSettings").doc("options").onSnapshot((doc) => {
 });
 
 function renderSelectOptions() {
-    const topicSelect = document.getElementById('addTopic');
-    const senderSelect = document.getElementById('addSender');
+    const topicSelect    = document.getElementById('addTopic');
+    const senderSelect   = document.getElementById('addSender');
     const categorySelect = document.getElementById('addCategory');
 
-    if (topicSelect) {
+    // ✅ FIX #1: Preserve currently selected values before re-rendering
+    const prevTopic    = topicSelect    ? topicSelect.value    : null;
+    const prevSender   = senderSelect   ? senderSelect.value   : null;
+    const prevCategory = categorySelect ? categorySelect.value : null;
+
+    if (topicSelect && appSettingsOptions.topics && appSettingsOptions.topics.length) {
         topicSelect.innerHTML = appSettingsOptions.topics.map(t => `<option value="${t}">${t}</option>`).join('');
+        if (prevTopic && topicSelect.querySelector(`option[value="${prevTopic}"]`)) topicSelect.value = prevTopic;
     }
-    if (senderSelect) {
+    if (senderSelect && appSettingsOptions.senders && appSettingsOptions.senders.length) {
         senderSelect.innerHTML = appSettingsOptions.senders.map(s => `<option value="${s}">${s}</option>`).join('');
+        if (prevSender && senderSelect.querySelector(`option[value="${prevSender}"]`)) senderSelect.value = prevSender;
     }
-    // ⭐ تعديل 10: تعبئة الفئات ديناميكياً من الـ DB
-    if (categorySelect && appSettingsOptions.categories) {
+    if (categorySelect && appSettingsOptions.categories && appSettingsOptions.categories.length) {
         categorySelect.innerHTML =
             appSettingsOptions.categories.map(c =>
                 `<option value="${c.name}">${c.name}</option>`
             ).join('') +
             '<option value="Custom">✨ Custom Category</option>';
+        // Restore previous selection if still valid
+        if (prevCategory && categorySelect.querySelector(`option[value="${prevCategory}"]`)) {
+            categorySelect.value = prevCategory;
+        }
     }
 }
 
@@ -116,6 +134,8 @@ document.addEventListener("DOMContentLoaded", function () {
             setupNotificationPermissionPrompt();
         }
         syncWatermarkMenuByRole();
+        // ✅ FIX #15: Load user-scoped favorites/pins after currentUser is set
+        initUserScopedStorage();
         startAppListeners();
 
         // --- HEARTBEAT SYSTEM ---
@@ -130,6 +150,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 sessionStorage.removeItem('hdbUser');
                 document.body.innerHTML = "<h2 style='text-align:center;margin-top:50px;font-family:sans-serif;'>Session Ended. You have been removed.</h2>";
                 setTimeout(() => window.location.reload(), 2000);
+            } else {
+                const userData = snap.docs[0].data();
+                if (userData.forceLogout) {
+                    // Password changed by admin, force logout immediately
+                    db.collection('users').doc(snap.docs[0].id).update({ forceLogout: firebase.firestore.FieldValue.delete() });
+                    sessionStorage.removeItem('hdbUser');
+                    document.body.innerHTML = "<h2 style='text-align:center;margin-top:50px;font-family:sans-serif;'>Your password was reset by an Admin. Please log in again.</h2>";
+                    setTimeout(() => window.location.reload(), 2000);
+                }
             }
         });
 
@@ -158,9 +187,12 @@ document.addEventListener("DOMContentLoaded", function () {
             snap.docChanges().forEach(change => {
                 if (change.type !== 'added') return;
                 const cmd = change.doc.data();
-                // Ignore commands older than 90 seconds
-                const age = cmd.timestamp ? (Date.now() - cmd.timestamp.toDate().getTime()) / 1000 : 999;
-                if (age > 90) return;
+
+                // ✅ FIX: if timestamp is null (Firestore pending write, common on slow networks),
+                // treat as just sent (age=0) instead of age=999 which always gets filtered out.
+                // Also increased window from 90s → 5 min to handle slow connections.
+                const age = cmd.timestamp ? (Date.now() - cmd.timestamp.toDate().getTime()) / 1000 : 0;
+                if (age > 300) return; // Ignore commands older than 5 minutes
 
                 if (cmd.type === 'forceRead' && (cmd.target === 'all' || cmd.target === currentUser.username)) {
                     showForceReadPopup(cmd.mailCode, change.doc.id);
@@ -177,8 +209,10 @@ document.addEventListener("DOMContentLoaded", function () {
             snap.docChanges().forEach(change => {
                 if (change.type !== 'added') return;
                 const data = change.doc.data();
-                const age = data.timestamp ? (Date.now() - data.timestamp.toDate().getTime()) / 1000 : 999;
-                if (age > 120) return;
+
+                // ✅ FIX: same fix — null timestamp treated as age=0, window extended to 5 min
+                const age = data.timestamp ? (Date.now() - data.timestamp.toDate().getTime()) / 1000 : 0;
+                if (age > 300) return;
 
                 const broadcastId = change.doc.id;
                 let dismissed = JSON.parse(localStorage.getItem('dismissedEmergency') || '[]');
@@ -427,7 +461,9 @@ window.addEventListener('click', () => {
 function startAppListeners() {
     let previousVisibleCount = 0;
     let lastPublishCheckTime = 0;
-    let publishedMailIds = new Set(); // Track already-published mails
+    // ✅ FIX #9: Expose publishedMailIds globally so updateExistingEntry can clear it
+    if (!window._publishedMailIds) window._publishedMailIds = new Set();
+    const publishedMailIds = window._publishedMailIds;
 
     unsubscribeMails = db.collection("mails").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
         const today = new Date().toISOString().split('T')[0];
@@ -437,10 +473,24 @@ function startAppListeners() {
         allMails = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
             .filter(m => {
                 if (m.expiryDate && m.expiryDate < today) return false;
+                
+                // ✅ FIX #9: If agent receives an updated mail that is scheduled in the future, remove it from published cache
+                if (m.publishAt && m.publishAt > nowISO && window._publishedMailIds) {
+                    window._publishedMailIds.delete(m.id);
+                }
+
                 if (isAdminSession) return true;
                 if (m.isDraft) return false;
                 return true; // Store all valid mails, filter by publishAt in getVisibleMails
             });
+
+        // ✅ FIX #7: If the currently open mail was deleted, close the mailbox immediately
+        if (window.currentlyOpenMailId) {
+            const openedMail = allMails.find(m => m.id === window.currentlyOpenMailId);
+            if (!openedMail || openedMail.isDeleted) {
+                closeMailBox();
+            }
+        }
 
         refreshDisplay();
         renderStickyBanners();
@@ -512,35 +562,8 @@ function startAppListeners() {
         });
     }, 1000);
 
-    // Admin real-time confirmations listener
-    if (isAdminSession) {
-        setInterval(() => {
-            db.collection('mails').get().then(snapshot => {
-                let hasChanges = false;
-                snapshot.forEach(doc => {
-                    const mail = doc.data();
-                    const existingMail = allMails.find(m => m.id === doc.id);
-
-                    if (existingMail && mail.readConfirmations && existingMail.readConfirmations) {
-                        const newCount = mail.readConfirmations.length;
-                        const oldCount = existingMail.readConfirmations.length;
-
-                        if (newCount > oldCount) {
-                            const newConfirmation = mail.readConfirmations[newCount - 1];
-                            showToast(`${newConfirmation.username} confirmed reading`, 'info');
-                            existingMail.readConfirmations = mail.readConfirmations;
-                            hasChanges = true;
-                        }
-                    }
-                });
-
-                // Update buttons if changes detected
-                if (hasChanges) {
-                    updateConfirmationButtons();
-                }
-            }).catch(() => { });
-        }, 1000);
-    }
+    // Task 1: Removed heavy setInterval polling Firestore for read confirmations.
+    // The native onSnapshot listener already handles real-time updates efficiently.
 }
 
 function updateBadgeCount() {
@@ -836,6 +859,39 @@ function getVisibleMails() {
 }
 
 // 3. Render Table
+// T13: Builds inline action icons HTML for each mail row
+function buildRowInlineActions(m) {
+    if (showingTrash) {
+        if (isAdminSession) {
+            return `
+                <span class="row-action-icon" title="Restore" onclick="restoreMail('${m.id}'); event.stopPropagation();">↩</span>
+                <span class="row-action-icon danger" title="Delete Forever" onclick="askPermanentDelete('${m.id}'); event.stopPropagation();">✖</span>
+            `;
+        } else {
+            return `<span class="row-action-icon" title="Restore" onclick="userRestoreMail('${m.id}'); event.stopPropagation();">↩</span>`;
+        }
+    } else {
+        if (isAdminSession) {
+            const pinned = m.isPinned;
+            return `
+                <span class="row-action-icon" title="Edit" onclick="editMail('${m.id}'); event.stopPropagation();">✏️</span>
+                <span class="row-action-icon" title="Clone" onclick="cloneMail('${m.id}'); event.stopPropagation();">📋</span>
+                <span class="row-action-icon ${pinned ? 'active' : ''}" title="${pinned ? 'Unpin' : 'Pin'}" onclick="pinMail('${m.id}'); event.stopPropagation();">📌</span>
+                <span class="row-action-icon" title="Export to Outlook" onclick="exportToOutlook('${m.id}'); event.stopPropagation();">✉️</span>
+                <span class="row-action-icon danger" title="Delete" onclick="askDeleteMail('${m.id}'); event.stopPropagation();">🗑️</span>
+            `;
+        } else {
+            const pinned = userPinned.includes(m.id);
+            const fav = userFavorites.includes(m.id);
+            return `
+                <span class="row-action-icon ${fav ? 'active' : ''}" title="${fav ? 'Unfavorite' : 'Favorite'}" onclick="toggleFav('${m.id}'); event.stopPropagation();">★</span>
+                <span class="row-action-icon ${pinned ? 'active' : ''}" title="${pinned ? 'Unpin' : 'Pin'}" onclick="toggleUserPin('${m.id}'); event.stopPropagation();">📌</span>
+                <span class="row-action-icon danger" title="Delete" onclick="askDeleteMail('${m.id}', 'user'); event.stopPropagation();">🗑️</span>
+            `;
+        }
+    }
+}
+
 function renderTable(data) {
     const tbody = document.getElementById("tableBody");
     if (!tbody) return;
@@ -923,16 +979,11 @@ function renderTable(data) {
         const urgentColor = "#e74c3c";
         if (targetColor === urgentColor) {
             badgeClass = "urgent-badge blink-subtle";
-            badgeStyle = "";
+            badgeStyle = `style="background: #e74c3c; color: white; padding: 5px 14px; font-weight: 700; border-radius: 20px; font-size: 12px; box-shadow: 0 4px 12px rgba(231,76,60,0.4);"`;
         } else {
-            const isStandard = ["#27ae60", "#3498db", "#95a5a6"].includes(targetColor);
-            badgeClass = isStandard ? "category-badge" : "category-badge custom-cat";
-            if (targetColor === "#27ae60") badgeClass += " policy";
-            if (targetColor === "#3498db") badgeClass += " update";
-
-            if (!isStandard) {
-                badgeStyle = `style="background: ${targetColor}15; color: ${targetColor}; border: 1px solid ${targetColor}40;"`;
-            }
+            // T11: Enhanced badge styles with dynamic color
+            badgeClass = "category-badge custom-cat";
+            badgeStyle = `style="background: ${targetColor}15; color: ${targetColor}; border: 1px solid ${targetColor}40; padding: 5px 14px; font-weight: 700; border-radius: 20px; font-size: 12px; box-shadow: 0 2px 8px ${targetColor}30;"`;
         }
 
         let mailVer = m.lastUpdatedAt || m.createdAt?.seconds || "v1";
@@ -949,7 +1000,8 @@ function renderTable(data) {
             }
         }
 
-        if (!isRead && !showingTrash) {
+        // ✅ FIX #8: Admins should NOT see unread red markers — agents only
+        if (!isRead && !showingTrash && !isAdminSession) {
             row.classList.add("unread-row");
         }
 
@@ -989,7 +1041,6 @@ function renderTable(data) {
                     <span class="${badgeClass}" ${badgeStyle}>
                         ${m.category || 'General'}
                     </span>
-                    <span title="Has Attachment" style="font-size:12px; margin-left:2px;">📎</span>
                     ${m.isDraft ? '<span title="Draft" style="background:#f39c12; color:white; padding:2px 6px; border-radius:4px; font-size:9px; margin-left:2px;">Draft</span>' : ''}
                     ${m.publishAt && m.publishAt > new Date().toISOString() ? '<span title="Scheduled" style="background:#8e44ad; color:white; padding:2px 6px; border-radius:4px; font-size:9px; margin-left:2px;">Scheduled</span>' : ''}
                 </div>
@@ -998,24 +1049,14 @@ function renderTable(data) {
             <td style="font-weight: 500;">${highlight(m.topic)}</td>
             <td>${highlight(m.idea) || '---'}</td>
             <td>
-                ${(m.keywords || m.sender || "").split(',').map(k => k.trim() ? `<span style="background:rgba(46,125,50,0.1); color:#2e7d32; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:bold; margin:2px; display:inline-block;">${highlight(k.trim())}</span>` : '').join('') || '---'}
+                <div style="display:flex; flex-wrap:wrap; gap:2px;">
+                    ${(m.keywords || m.sender || "").split(',').map(k => k.trim() ? `<span style="background:rgba(46,125,50,0.1); color:#2e7d32; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:bold; margin:2px; display:inline-block;">${highlight(k.trim())}</span>` : '').join('') || '---'}
+                </div>
             </td>
         `;
 
-        // === Floating Hover Action Bar (replaces dblclick) ===
-        row.addEventListener('mouseenter', function () {
-            clearTimeout(window._rowHideTimer);
-            window._rowHoverTimer = setTimeout(() => {
-                showMailActions({ currentTarget: row }, m);
-            }, 180);
-        });
-        row.addEventListener('mouseleave', function () {
-            clearTimeout(window._rowHoverTimer);
-            window._rowHideTimer = setTimeout(() => {
-                const bar = document.getElementById('rowHoverBar');
-                if (bar) bar.classList.remove('visible');
-            }, 160);
-        });
+        // === Row hover: show inline actions only (no floating bar) ===
+        // Inline actions are revealed via CSS opacity on .row-inline-actions
 
         // Single click action (show content and mark as read)
         row.onclick = (e) => {
@@ -1087,15 +1128,15 @@ function renderTable(data) {
             const URGENT_KEYWORDS = ['urgent', 'عاجل', 'critical', 'immediate', 'هام', 'خطير', 'error', 'alert', 'التعديل العاجل'];
             const KEY_HIGHLIGHT = (m.keywords || m.sender || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
 
-            // Highlight keywords and urgent words in content
+            // Highlight keywords and urgent words in content (Safe regex to ignore HTML attributes — FIX Image Bug)
             let highlightedContent = processedContent;
             KEY_HIGHLIGHT.forEach(kw => {
                 if (!kw) return;
-                const re = new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                const re = new RegExp(`(?![^<]*>)(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
                 highlightedContent = highlightedContent.replace(re, `<span class="mail-keyword-highlight">$1</span>`);
             });
             URGENT_KEYWORDS.forEach(kw => {
-                const re = new RegExp(`\\b(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'gi');
+                const re = new RegExp(`(?![^<]*>)\\b(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'gi');
                 highlightedContent = highlightedContent.replace(re, `<span class="mail-keyword-urgent">$1</span>`);
             });
 
@@ -1111,17 +1152,11 @@ function renderTable(data) {
             const catColor = catColors[m.category] || targetColor;
             const catBg = `linear-gradient(135deg, ${catColor}, ${catColor}cc)`;
 
-            // Live relative time
+            // ✅ FIX #3: Real-time date and time in Arabic
             function relativeTime(ts) {
                 if (!ts) return '';
                 const d = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
-                const diff = Math.floor((Date.now() - d) / 1000);
-                if (diff < 60) return 'منذ ثوان';
-                if (diff < 3600) return `منذ ${Math.floor(diff / 60)} دقيقة`;
-                if (diff < 86400) return `منذ ${Math.floor(diff / 3600)} ساعة`;
-                if (diff < 172800) return 'أمس';
-                if (diff < 604800) return `منذ ${Math.floor(diff / 86400)} أيام`;
-                return d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+                return d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) + ' - ' + d.toLocaleDateString('ar-EG');
             }
             const liveTime = relativeTime(m.createdAt);
 
@@ -1163,8 +1198,8 @@ function renderTable(data) {
                                 onmousedown="startFontSizeHold(1)" onmouseup="stopFontSizeHold()" onmouseleave="stopFontSizeHold()" title="Increase font">A⁺</button>
                         </div>
                         <button class="mail-box-action-btn" onclick="addRipple(event,this); copyMailContent()" title="Copy content">📋</button>
-                        <button class="mail-box-action-btn" onclick="addRipple(event,this); window.print()" title="Print">🖨️</button>
-                        <button class="mail-box-action-btn" data-zen-btn onclick="addRipple(event,this); toggleMailZenMode(true)" title="Full Screen">⛶</button>
+                        ${isAdminSession ? `<button class="mail-box-action-btn" onclick="addRipple(event,this); window.print()" title="Print">🖨️</button>` : ''}
+                        <button class="mail-box-action-btn" data-zen-btn onclick="addRipple(event,this); toggleMailZenMode(!document.getElementById('mailBox').classList.contains('zen-mode'))" title="Full Screen">⛶</button>
                         <button class="mail-box-action-btn danger" onclick="addRipple(event,this); closeMailBox()" title="Close">✕</button>
                     </div>
                 </div>
@@ -1185,8 +1220,8 @@ function renderTable(data) {
                 <!-- FOOTER -->
                 <div class="mail-box-footer">
                     <div class="mail-box-footer-author">
-                        <div class="author-avatar">${authorInitial}</div>
-                        <span>Published by <strong>${authorName}</strong> &nbsp;&middot;&nbsp; <span id="mailLiveTime" data-ts="${m.createdAt ? (m.createdAt.seconds || '') : ''}" style="color:#aaa;">${liveTime}</span></span>
+                        <!-- ✅ FIX #3: Removed 'Published by Admin' — show timestamp bubble only -->
+                        <span class="mail-time-bubble" id="mailLiveTime" data-ts="${m.createdAt ? (m.createdAt.seconds || '') : ''}">🕐 ${liveTime}</span>
                         ${renderDeadlineChip(m.expiryDate || '')}
                     </div>
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -1198,7 +1233,14 @@ function renderTable(data) {
             dummyBox.innerHTML = generatedMailBoxHTML;
             const currentMailBox = document.getElementById("mailBox");
             if (currentMailBox.innerHTML !== dummyBox.innerHTML) {
+                // ✅ FIX #7: Prevent layout jump by saving/restoring scroll instantly
+                const mailBoxBody = document.getElementById('mailBoxBody');
+                const prevScroll = mailBoxBody ? mailBoxBody.scrollTop : 0;
                 currentMailBox.innerHTML = generatedMailBoxHTML;
+                if (prevScroll > 0) {
+                    const newBody = document.getElementById('mailBoxBody');
+                    if (newBody) newBody.scrollTop = prevScroll;
+                }
             }
 
             // Set category data attribute for dynamic shadow
@@ -1309,11 +1351,32 @@ function renderTable(data) {
         };
         fragment.appendChild(row);
 
-        // Mail preview row
+        // M2+T13: Preview row — click opens mail, icons in right col
         let previewRow = document.createElement("tr");
         previewRow.className = "preview";
-        let contentClean = m.content ? m.content.replace(/<[^>]*>/g, '') : "";
-        previewRow.innerHTML = `<td colspan="${getTableColspan()}" style="text-align:left; color:#888; font-size:11px; padding-left:45px; opacity:0.7;">📄 ${contentClean.substring(0, 80)}...</td>`;
+        previewRow.setAttribute("data-id", m.id);
+        let contentClean = m.content ? m.content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : "";
+        // M2: Max 200 chars to keep single line
+        const previewText = contentClean.length > 200 ? contentClean.substring(0, 200) + '…' : contentClean;
+
+        const emptyRightCols = 1;
+        const textCols = getTableColspan() - emptyRightCols;
+
+        previewRow.innerHTML = `
+            <td colspan="${textCols}" style="text-align: right; padding-right: 15px; color: #555; direction: rtl; cursor: pointer; max-width: 0; width: 100%;" title="Click to open this mail">
+                <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%;">📄 ${previewText}</div>
+            </td>
+            <td colspan="${emptyRightCols}" style="padding: 4px 8px; border-top:none; background:transparent; vertical-align:middle; width: 120px;">
+                <div class="row-inline-actions" style="display:flex; justify-content:flex-end; gap:6px;">
+                    ${buildRowInlineActions(m)}
+                </div>
+            </td>
+        `;
+        // M2: Clicking the preview text opens the mail (same as clicking the main row)
+        previewRow.querySelector('td:first-child').addEventListener('click', function(e) {
+            e.stopPropagation();
+            row.click();
+        });
         fragment.appendChild(previewRow);
     });
 
@@ -1380,7 +1443,8 @@ function toggleFav(id) {
         userFavorites.push(id);
         showToast("Added to Favorites", "success");
     }
-    localStorage.setItem('userFavs', JSON.stringify(userFavorites));
+    // ✅ FIX #15: Save with user-scoped key
+    localStorage.setItem(getUserFavKey(), JSON.stringify(userFavorites));
 
     const actionBtn = document.querySelector(`.action-btn.btn-fav[onclick="toggleFav('${id}')"]`);
     if (actionBtn) {
@@ -1409,7 +1473,8 @@ function toggleUserPin(id) {
         userPinned.push(id);
         showToast("Pinned to your profile", "success");
     }
-    localStorage.setItem('userPinned', JSON.stringify(userPinned));
+    // ✅ FIX #15: Save with user-scoped key
+    localStorage.setItem(getUserPinKey(), JSON.stringify(userPinned));
     refreshDisplay();
 }
 
@@ -1547,21 +1612,1113 @@ function showToast(message, type = "success") {
     }, 2200);
 }
 
-// 7. الاختصارات والبحث والـ Dark Mode وقسم الإدارة
+// ── Per-Paragraph Smart Direction — Outlook-like bidi ──────────────
+// The core algorithm: finds the FIRST strong directional character
+// (ignoring numbers, spaces, punctuation) to determine paragraph direction.
+function getStrongDir(text) {
+    for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i);
+        // Arabic / Arabic Supplement / Arabic Presentation Forms
+        if ((code >= 0x0600 && code <= 0x06FF) || (code >= 0x0750 && code <= 0x077F) || (code >= 0xFE70 && code <= 0xFEFF)) return 'rtl';
+        // Basic Latin letters (A-Z, a-z)
+        if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A)) return 'ltr';
+        // Extended Latin, Cyrillic, Greek, Hebrew, etc.
+        if (code >= 0x00C0 && code <= 0x024F) return 'ltr';
+    }
+    return null; // neutral (numbers/punctuation only)
+}
+
+function applySmartDirection(editorEl) {
+    if (!editorEl) return;
+    editorEl.querySelectorAll('p, li, h1, h2, h3, h4, blockquote, td, th').forEach(el => {
+        // Skip if manually locked by user (has explicit dir attribute set by RTL/LTR buttons)
+        if (el.dataset.dirLocked) return;
+        const text = (el.innerText || el.textContent || '').trim();
+        if (!text) return;
+        const dir = getStrongDir(text);
+        if (dir === 'rtl') { el.dir = 'rtl'; el.style.textAlign = 'right'; }
+        else if (dir === 'ltr') { el.dir = 'ltr'; el.style.textAlign = 'left'; }
+        // neutral → keep current direction (don't change)
+    });
+    updateDirIndicator(editorEl);
+}
+
+function updateDirIndicator(editorEl) {
+    const indicator = document.getElementById('dirStatusIndicator');
+    if (!indicator || !editorEl) return;
+    try {
+        const selection = (editorEl.ownerDocument || document).getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const range = selection.getRangeAt(0);
+        const node = range.startContainer;
+        const block = (node.nodeType === 3 ? node.parentElement : node).closest('p,li,h1,h2,h3,h4,div,blockquote');
+        if (block) {
+            const dir = block.dir || 'rtl';
+            indicator.textContent = dir === 'rtl' ? '← RTL' : 'LTR →';
+            indicator.style.color = dir === 'rtl' ? '#27ae60' : '#3498db';
+        }
+    } catch(e) {}
+}
+
+// ── Fix All Directions at once ─────────────────────────────────────
+function fixAllDirections() {
+    if (!joditEditor || !joditEditor.editor) return;
+    const editorEl = joditEditor.editor;
+    editorEl.querySelectorAll('p, li, h1, h2, h3, h4, blockquote, td, th').forEach(el => {
+        el.removeAttribute('data-dir-locked');
+        const text = (el.innerText || el.textContent || '').trim();
+        if (!text) return;
+        const dir = getStrongDir(text);
+        if (dir === 'rtl') { el.dir = 'rtl'; el.style.textAlign = 'right'; }
+        else if (dir === 'ltr') { el.dir = 'ltr'; el.style.textAlign = 'left'; }
+    });
+    showToast('All paragraph directions fixed ✅', 'success');
+}
+
+// ── Inline Direction Tag (for one word inside a line) ─────────────
+function inlineDirectionTag() {
+    if (!joditEditor) return;
+    const selected = joditEditor.selection.html;
+    if (!selected || !selected.trim()) {
+        showToast('Select a word or text first', 'warning');
+        return;
+    }
+    const dir = getStrongDir(selected) || 'ltr';
+    const opposite = dir === 'rtl' ? 'ltr' : 'rtl';
+    joditEditor.selection.insertHTML(
+        `<span dir="${opposite}" style="unicode-bidi:embed;">${selected}</span>`
+    );
+}
+
+// 7. Enhanced Jodit Editor — with RTL fix + new features
 let joditEditor;
+
+// ── Auto-Save Draft System ─────────────────────────────────────────
+let autoSaveTimer = null;
+function triggerAutoSave() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+        if (!joditEditor) return;
+        const content = joditEditor.value;
+        if (content && content.trim() !== '<p><br></p>') {
+            localStorage.setItem('adminDraftContent', content);
+            localStorage.setItem('adminDraftSaved', new Date().toLocaleTimeString());
+            const el = document.getElementById('autoSaveStatus');
+            if (el) { el.innerText = '💾 Draft saved at ' + new Date().toLocaleTimeString(); el.style.color = '#27ae60'; }
+        }
+    }, 30000); // Auto-save every 30 seconds
+}
+
+// ── Per-Paragraph Smart Direction (the RTL fix core) ───────────────
+function applySmartDirection(editorEl) {
+    if (!editorEl) return;
+    editorEl.querySelectorAll('p, div, li, h1, h2, h3, h4, blockquote').forEach(el => {
+        const text = (el.innerText || el.textContent || '').trim();
+        if (!text) return;
+        // Find first "strong directional" character
+        for (let i = 0; i < Math.min(text.length, 30); i++) {
+            const code = text.charCodeAt(i);
+            const isArabic = (code >= 0x0600 && code <= 0x06FF) || (code >= 0x0750 && code <= 0x077F) || (code >= 0xFE70 && code <= 0xFEFF);
+            const isLatin  = (code >= 0x0041 && code <= 0x007A);
+            if (isArabic) { el.dir = 'rtl'; el.style.textAlign = 'right'; break; }
+            if (isLatin)  { el.dir = 'ltr'; el.style.textAlign = 'left';  break; }
+        }
+    });
+}
+
+// ── Custom Jodit Buttons ───────────────────────────────────────────
+const joditCustomButtons = {
+    // RTL Toggle
+    rtlBtn: {
+        name: 'rtlBtn',
+        iconURL: '',
+        tooltip: 'Set RTL (Arabic) — Alt+Shift',
+        text: '⇐ RTL',
+        exec(editor) {
+            // ✅ FIX: selection.current() can return a text node — must get parentElement
+            const currentNode = editor.s.current();
+            const el = currentNode
+                ? (currentNode.nodeType === 3 ? currentNode.parentElement : currentNode)
+                : null;
+            const block = el ? el.closest('p,div,li,h1,h2,h3,h4,blockquote') : null;
+            if (block) {
+                block.dir = 'rtl';
+                block.style.textAlign = 'right';
+                block.dataset.dirLocked = '1';
+            } else {
+                editor.s.insertHTML('<p dir="rtl" style="text-align:right"><br></p>');
+            }
+        }
+    },
+    // LTR Toggle
+    ltrBtn: {
+        name: 'ltrBtn',
+        iconURL: '',
+        tooltip: 'Set LTR (English) — Alt+Shift',
+        text: 'LTR ⇒',
+        exec(editor) {
+            // ✅ FIX: same text node guard
+            const currentNode = editor.s.current();
+            const el = currentNode
+                ? (currentNode.nodeType === 3 ? currentNode.parentElement : currentNode)
+                : null;
+            const block = el ? el.closest('p,div,li,h1,h2,h3,h4,blockquote') : null;
+            if (block) {
+                block.dir = 'ltr';
+                block.style.textAlign = 'left';
+                block.dataset.dirLocked = '1';
+            } else {
+                editor.s.insertHTML('<p dir="ltr" style="text-align:left"><br></p>');
+            }
+        }
+    },
+    // Info Callout
+    infoBox: {
+        name: 'infoBox', text: 'ℹ️ Info', tooltip: 'Insert Info Box',
+        exec(editor) { editor.s.insertHTML('<div style="background:#e8f4f8;border-left:4px solid #3498db;padding:12px 16px;border-radius:6px;margin:10px 0"><strong>ℹ️ Note:</strong> Write content here...</div>'); }
+    },
+    // Warning Callout
+    warnBox: {
+        name: 'warnBox', text: '⚠️ Warning', tooltip: 'Insert Warning Box',
+        exec(editor) { editor.s.insertHTML('<div style="background:#fef9e7;border-left:4px solid #f39c12;padding:12px 16px;border-radius:6px;margin:10px 0"><strong>⚠️ Warning:</strong> Write content here...</div>'); }
+    },
+    // Danger Callout
+    dangerBox: {
+        name: 'dangerBox', text: '🔴 Urgent', tooltip: 'Insert Urgent Box',
+        exec(editor) { editor.s.insertHTML('<div style="background:#fdedec;border-left:4px solid #e74c3c;padding:12px 16px;border-radius:6px;margin:10px 0"><strong>🔴 Urgent:</strong> Write content here...</div>'); }
+    },
+    // Success Callout
+    successBox: {
+        name: 'successBox', text: '✅ Success', tooltip: 'Insert Success Box',
+        exec(editor) { editor.s.insertHTML('<div style="background:#eafaf1;border-left:4px solid #27ae60;padding:12px 16px;border-radius:6px;margin:10px 0"><strong>✅ Success:</strong> Write content here...</div>'); }
+    },
+    // Divider
+    divider: {
+        name: 'divider', text: '── Divider', tooltip: 'Insert Divider',
+        exec(editor) { editor.s.insertHTML('<hr style="border:none;border-top:2px solid #2e7d32;margin:20px 0;opacity:0.4">'); }
+    },
+    // Priority Badge
+    priorityBadge: {
+        name: 'priorityBadge', text: '🏷️ Priority', tooltip: 'Insert Priority Badge',
+        exec(editor) {
+            const priority = prompt('Choose priority: urgent / important / info');
+            const map = {
+                urgent:    { bg: '#e74c3c', text: '🔴 Urgent' },
+                important: { bg: '#f39c12', text: '🟡 Important' },
+                info:      { bg: '#3498db', text: '🔵 Info' }
+            };
+            const p = map[priority] || map['info'];
+            editor.s.insertHTML(`<span style="background:${p.bg};color:white;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:bold;margin:0 4px;">${p.text}</span>`);
+        }
+    },
+    // Checklist
+    checkList: {
+        name: 'checkList', text: '☑️ Checklist', tooltip: 'Insert Checklist',
+        exec(editor) { editor.s.insertHTML('<ul style="list-style:none;padding:0"><li style="margin:6px 0">☑️ Item 1</li><li style="margin:6px 0">☑️ Item 2</li><li style="margin:6px 0">☑️ Item 3</li></ul>'); }
+    },
+    // Fix All Directions
+    fixAllDirs: {
+        name: 'fixAllDirs', text: '🔧 Fix Dir', tooltip: 'Fix All Paragraphs Direction (like Outlook)',
+        exec(editor) { fixAllDirections(); }
+    },
+    // Inline Direction (flip selected word)
+    inlineDir: {
+        name: 'inlineDir', text: '↔️ Inline', tooltip: 'Flip direction of selected text (for one English word inside Arabic)',
+        exec(editor) { inlineDirectionTag(); }
+    },
+    // Arabic Quotes converter
+    arabicQuotes: {
+        name: 'arabicQuotes', text: '« »', tooltip: 'Wrap selection in Arabic quotes «»',
+        exec(editor) {
+            const sel = editor.s.html || '';
+            if (sel && sel.trim()) {
+                editor.s.insertHTML(`«${sel}»`);
+            } else {
+                editor.s.insertHTML('«Write here»');
+            }
+        }
+    },
+    // Quote Block
+    quoteBlock: {
+        name: 'quoteBlock', text: '❝ Quote', tooltip: 'Insert Quote Block',
+        exec(editor) {
+            const sel = editor.s.html || '';
+            const content = sel && sel.trim() ? sel : 'Write quote here...';
+            editor.s.insertHTML(`<blockquote style="border-right:4px solid #2e7d32;border-left:none;padding:10px 16px;margin:12px 0;background:rgba(46,125,50,0.06);border-radius:0 8px 8px 0;font-style:italic;color:#2c3e50">${content}</blockquote>`);
+        }
+    },
+    // Code Block
+    codeBlock: {
+        name: 'codeBlock', text: '&lt;/&gt; Code', tooltip: 'Insert Code Block',
+        exec(editor) {
+            const sel = editor.s.html || '';
+            const content = sel && sel.trim() ? sel : 'code here...';
+            editor.s.insertHTML(`<pre style="background:#1e2e1e;color:#a8ff78;padding:14px 18px;border-radius:8px;font-family:'Courier New',monospace;font-size:13px;margin:12px 0;overflow-x:auto;direction:ltr;text-align:left">${content}</pre>`);
+        }
+    },
+    // Mail Templates
+    mailTemplate: {
+        name: 'mailTemplate', text: '📋 Template', tooltip: 'Insert a pre-built mail template',
+        exec(editor) {
+            const templates = [
+                { label: '1 — Maintenance Notice', html: '<p><strong>🔧 Scheduled Maintenance Notice</strong></p><p>Please be advised that the system will undergo scheduled maintenance on <strong>[DATE]</strong> from <strong>[TIME]</strong> to <strong>[TIME]</strong>.</p><p>During this period, services will be temporarily unavailable. We apologize for any inconvenience.</p><p>For urgent matters, please contact your supervisor directly.</p>' },
+                { label: '2 — Policy Update', html: '<p><strong>📋 Policy Update</strong></p><p>Effective <strong>[DATE]</strong>, the following policy change will be in effect:</p><p>[Describe the policy change here]</p><p>All staff are required to acknowledge this update by <strong>[DEADLINE]</strong>.</p>' },
+                { label: '3 — Urgent Alert', html: '<div style="background:#fdedec;border-left:4px solid #e74c3c;padding:12px 16px;border-radius:6px;margin:10px 0"><strong>🔴 URGENT:</strong> Immediate action required.</div><p>[Describe the situation and required action]</p><p>Please respond as soon as possible.</p>' },
+                { label: '4 — General Announcement', html: '<p><strong>📢 Announcement</strong></p><p>Dear Team,</p><p>[Write announcement content here]</p><p>Thank you for your cooperation.</p>' },
+            ];
+            const chosen = prompt('Choose template:\n' + templates.map(t => t.label).join('\n') + '\n\nType number (1-' + templates.length + '):');
+            const idx = parseInt(chosen) - 1;
+            if (idx >= 0 && idx < templates.length) {
+                editor.s.insertHTML(templates[idx].html);
+            }
+        }
+    },
+    // Focus Mode toggle
+    focusMode: {
+        name: 'focusMode', text: '🔍 Focus', tooltip: 'Toggle Focus Mode (fullscreen editor)',
+        exec(editor) {
+            const container = editor.container;
+            if (!container) return;
+            if (container.classList.contains('hdb-focus-mode')) {
+                container.classList.remove('hdb-focus-mode');
+                document.body.classList.remove('hdb-focus-overlay');
+            } else {
+                container.classList.add('hdb-focus-mode');
+                document.body.classList.add('hdb-focus-overlay');
+            }
+        }
+    },
+    // Version History
+    versionHistory: {
+        name: 'versionHistory', text: '🕐 History', tooltip: 'Save/restore version history (last 10)',
+        exec(editor) {
+            const action = prompt('Version History:\n1 — Save current version\n2 — List & restore saved versions\n\nType 1 or 2:');
+            if (action === '1') {
+                const versions = JSON.parse(localStorage.getItem('editorVersions') || '[]');
+                versions.unshift({ time: new Date().toLocaleString(), html: editor.value });
+                if (versions.length > 10) versions.length = 10;
+                localStorage.setItem('editorVersions', JSON.stringify(versions));
+                if (typeof showToast === 'function') showToast('Version saved ✅ (' + versions.length + '/10)', 'success');
+            } else if (action === '2') {
+                const versions = JSON.parse(localStorage.getItem('editorVersions') || '[]');
+                if (!versions.length) { alert('No saved versions yet.'); return; }
+                const list = versions.map((v, i) => `${i + 1}. ${v.time}`).join('\n');
+                const pick = parseInt(prompt('Saved versions:\n' + list + '\n\nType number to restore:')) - 1;
+                if (pick >= 0 && pick < versions.length) {
+                    editor.value = versions[pick].html;
+                    if (typeof showToast === 'function') showToast('Version restored ✅', 'success');
+                }
+            }
+        }
+    }
+};
+
+// Register all custom buttons
+Object.values(joditCustomButtons).forEach(btn => { try { Jodit.plugins.add(btn.name, function(){}); } catch(e){} });
+
+// ============================================================
+//  🖼️  IMAGE MANAGEMENT HELPERS
+// ============================================================
+
+// 1. Resize image via canvas before inserting (max 900px, 85% quality)
+function compressImageDataUrl(dataUrl, callback, maxW = 900) {
+    const img = new Image();
+    img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        callback(canvas.toDataURL('image/jpeg', 0.85), w, h);
+    };
+    img.onerror = () => callback(dataUrl, 0, 0); // fallback: use original
+    img.src = dataUrl;
+}
+
+// 2. Clean Word/Outlook HTML — strip XML junk, keep images and text structure
+function cleanWordHtml(html) {
+    return html
+        // Remove conditional comments (Word markup)
+        .replace(/<!--\[if[\s\S]*?\[endif\]-->/gi, '')
+        // Remove Office/Word XML namespaced tags
+        .replace(/<\/?o:[^>]*>/gi, '')
+        .replace(/<\/?w:[^>]*>/gi, '')
+        .replace(/<\/?m:[^>]*>/gi, '')
+        // Remove Word-specific style attributes
+        .replace(/\s+style="[^"]*mso-[^"]*"/gi, '')
+        .replace(/\s+class="Mso[A-Za-z]+"/gi, '')
+        // Remove empty paragraphs Word loves to add
+        .replace(/<p[^>]*>\s*(&nbsp;|\u00a0)?\s*<\/p>/gi, '')
+        // Remove <span> wrappers but keep content
+        .replace(/<span(?!\s+dir)[^>]*>([\s\S]*?)<\/span>/gi, '$1')
+        // Clean up multiple spaces/newlines
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+// 3. Image toolbar — integrated as a secondary row in the Jodit toolbar header
+function setupImageClickControls(editorEl) {
+    if (!editorEl) return;
+
+    // Find the Jodit toolbar container to inject our row into
+    const joditContainer = editorEl.closest('.jodit-container') || document.querySelector('.jodit-container');
+    if (!joditContainer) return;
+
+    // Remove any existing image toolbar row
+    const old = document.getElementById('hdb-img-toolbar-row');
+    if (old) old.remove();
+
+    // ── Build the premium secondary toolbar row ─────────────────
+    const row = document.createElement('div');
+    row.id = 'hdb-img-toolbar-row';
+    row.style.cssText = [
+        'display:none',
+        'align-items:center',
+        'gap:8px',
+        'flex-wrap:nowrap',
+        'overflow-x:auto',
+        'padding:7px 14px',
+        'background:linear-gradient(90deg,rgba(39,174,96,0.07),rgba(39,174,96,0.02))',
+        'border-top:1px solid rgba(39,174,96,0.18)',
+        'border-bottom:1px solid rgba(39,174,96,0.1)',
+        'font-family:Poppins,sans-serif',
+        'animation:imgRowSlide 0.25s cubic-bezier(.175,.885,.32,1.275)',
+        'scrollbar-width:thin',
+        'scrollbar-color:rgba(39,174,96,0.3) transparent'
+    ].join(';');
+
+    // Inject premium styles once
+    if (!document.getElementById('hdb-img-row-style')) {
+        const s = document.createElement('style');
+        s.id = 'hdb-img-row-style';
+        s.textContent = [
+            '@keyframes imgRowSlide {',
+            '  from{opacity:0;transform:translateY(-10px) scale(.98)}',
+            '  to{opacity:1;transform:translateY(0) scale(1)}',
+            '}',
+            '#hdb-img-toolbar-row::-webkit-scrollbar{height:3px}',
+            '#hdb-img-toolbar-row::-webkit-scrollbar-thumb{background:rgba(39,174,96,.35);border-radius:4px}',
+            '.hdb-itr-group{display:flex;align-items:center;gap:3px;background:rgba(255,255,255,.55);padding:3px 4px;border-radius:9px;border:1px solid rgba(0,0,0,.05)}',
+            '.hdb-itr-group button{background:transparent;border:none;color:#2c3e50;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:500;transition:all .18s ease;white-space:nowrap;line-height:1}',
+            '.hdb-itr-group button:hover{background:rgba(39,174,96,.18);color:#27ae60;transform:translateY(-1px)}',
+            '.hdb-itr-group button.hdb-active{background:#27ae60;color:#fff}',
+            '.hdb-itr-group button.hdb-danger{color:#e74c3c}',
+            '.hdb-itr-group button.hdb-danger:hover{background:rgba(231,76,60,.15)}',
+            '.hdb-itr-sep{width:1px;height:22px;background:rgba(39,174,96,.2);margin:0 4px;flex-shrink:0}',
+            '.hdb-itr-label{font-size:12px;font-weight:700;color:#27ae60;padding:0 4px;white-space:nowrap;flex-shrink:0}',
+            '.hdb-itr-dim{font-size:10px;font-weight:600;color:#27ae60;padding:4px 9px;border:1px dashed rgba(39,174,96,.45);border-radius:6px;background:rgba(39,174,96,.06);min-width:68px;text-align:center;flex-shrink:0;font-variant-numeric:tabular-nums}'
+        ].join('\n');
+        document.head.appendChild(s);
+    }
+
+    row.innerHTML = [
+        '<span class="hdb-itr-label">\u2728 Image Studio</span>',
+        '<div class="hdb-itr-sep"></div>',
+        // Alignment group
+        '<div class="hdb-itr-group">',
+        '  <button data-cmd="float-left" title="Float Left">\u21a4 Left</button>',
+        '  <button data-cmd="center" title="Center">\u25aa Center</button>',
+        '  <button data-cmd="float-right" title="Float Right">Right \u21a6</button>',
+        '  <button data-cmd="full-width" title="Full Width">\u2194 Full</button>',
+        '</div>',
+        '<div class="hdb-itr-sep"></div>',
+        // Size group
+        '<div class="hdb-itr-group">',
+        '  <button data-cmd="size-small" title="Small 200px">S</button>',
+        '  <button data-cmd="size-medium" title="Medium 400px">M</button>',
+        '  <button data-cmd="size-large" title="Large 700px">L</button>',
+        '  <button data-cmd="size-original" title="Original Size">1:1</button>',
+        '</div>',
+        '<span class="hdb-itr-dim" id="hdb-img-dimensions">\u2014 \u00d7 \u2014</span>',
+        '<div class="hdb-itr-sep"></div>',
+        // Style group
+        '<div class="hdb-itr-group">',
+        '  <button data-cmd="toggle-rounded" title="Toggle Rounded Corners">\ud83d\udd32 Round</button>',
+        '  <button data-cmd="toggle-shadow" title="Toggle Shadow">\ud83d\udca1 Shadow</button>',
+        '  <button data-cmd="toggle-border" title="Toggle Border">\ud83d\uddf3 Border</button>',
+        '  <button data-cmd="toggle-opacity" title="Toggle 70% Opacity">\ud83c\udf2b\ufe0f Fade</button>',
+        '</div>',
+        '<div class="hdb-itr-sep"></div>',
+        // Actions group
+        '<div class="hdb-itr-group">',
+        '  <button data-cmd="add-caption" title="Add/Edit Caption">\ud83d\udcdd Caption</button>',
+        '  <button data-cmd="duplicate-img" title="Duplicate Image">\u29c9 Clone</button>',
+        '  <button data-cmd="reset-style" title="Reset all styles">\u21ba Reset</button>',
+        '  <button data-cmd="delete-img" class="hdb-danger" title="Delete Image">\ud83d\uddd1 Delete</button>',
+        '</div>'
+    ].join('');
+
+    // Insert the row right after the toolbar box inside Jodit container
+    const toolbarBox = joditContainer.querySelector('.jodit-toolbar__box');
+    if (toolbarBox) {
+        toolbarBox.parentNode.insertBefore(row, toolbarBox.nextSibling);
+    } else {
+        joditContainer.prepend(row); // fallback
+    }
+
+    let _selectedImg = null;
+
+    function showRow(img) {
+        _selectedImg = img;
+        img.style.outline = '2.5px solid #2ecc71';
+        img.style.outlineOffset = '3px';
+        img.style.transition = 'outline .15s ease, box-shadow .2s ease';
+        // Sync active states for toggle buttons
+        _syncToggleButtons(img);
+        // Show dimensions
+        _updateDim();
+        row.style.display = 'flex';
+    }
+
+    function hideRow() {
+        if (_selectedImg) {
+            _selectedImg.style.outline = '';
+            _selectedImg.style.outlineOffset = '';
+            _selectedImg.style.transition = '';
+        }
+        _selectedImg = null;
+        row.style.display = 'none';
+    }
+
+    function _updateDim() {
+        const dimEl = document.getElementById('hdb-img-dimensions');
+        if (dimEl && _selectedImg) {
+            const r = _selectedImg.getBoundingClientRect();
+            dimEl.textContent = Math.round(r.width) + ' \u00d7 ' + Math.round(r.height);
+        }
+    }
+
+    function _syncToggleButtons(img) {
+        const buttons = row.querySelectorAll('[data-cmd]');
+        buttons.forEach(btn => {
+            const c = btn.dataset.cmd;
+            if (c === 'toggle-rounded') btn.classList.toggle('hdb-active', !!img.style.borderRadius && img.style.borderRadius !== '50%');
+            if (c === 'toggle-shadow')  btn.classList.toggle('hdb-active', !!img.style.boxShadow);
+            if (c === 'toggle-border')  btn.classList.toggle('hdb-active', !!img.style.borderWidth);
+            if (c === 'toggle-opacity') btn.classList.toggle('hdb-active', img.style.opacity && img.style.opacity !== '1');
+        });
+    }
+
+    // Show row when clicking any image in editor
+    editorEl.addEventListener('click', e => {
+        if (e.target && e.target.tagName === 'IMG') {
+            showRow(e.target);
+        } else {
+            hideRow();
+        }
+    });
+
+    // Handle commands
+    row.addEventListener('click', e => {
+        const cmd = e.target.closest('[data-cmd]')?.dataset.cmd;
+        if (!cmd || !_selectedImg) return;
+        const img = _selectedImg;
+
+        switch(cmd) {
+            // ── Alignment ────────────────────────────────────────
+            case 'float-left':
+                img.style.cssText += ';float:left;margin:0 18px 10px 0;display:block';
+                break;
+            case 'float-right':
+                img.style.cssText += ';float:right;margin:0 0 10px 18px;display:block';
+                break;
+            case 'center':
+                img.style.float = 'none';
+                img.style.display = 'block';
+                img.style.margin = '15px auto';
+                break;
+            case 'full-width':
+                img.style.width = '100%';
+                img.style.height = 'auto';
+                img.style.float = 'none';
+                img.style.display = 'block';
+                img.style.margin = '15px 0';
+                break;
+            // ── Sizes ─────────────────────────────────────────────
+            case 'size-small':    img.style.width = '200px'; img.style.height = 'auto'; break;
+            case 'size-medium':   img.style.width = '400px'; img.style.height = 'auto'; break;
+            case 'size-large':    img.style.width = '700px'; img.style.height = 'auto'; break;
+            case 'size-original': img.style.width = ''; img.style.height = ''; break;
+            // ── Toggle Styles ──────────────────────────────────────
+            case 'toggle-rounded':
+                img.style.borderRadius = img.style.borderRadius && img.style.borderRadius !== '50%' ? '' : '12px';
+                break;
+            case 'toggle-shadow':
+                img.style.boxShadow = img.style.boxShadow ? '' : '0 10px 32px rgba(0,0,0,0.18)';
+                break;
+            case 'toggle-border':
+                if (img.style.borderWidth) {
+                    img.style.border = '';
+                } else {
+                    img.style.border = '2px solid #27ae60';
+                    img.style.borderRadius = img.style.borderRadius || '6px';
+                }
+                break;
+            case 'toggle-opacity':
+                img.style.opacity = (img.style.opacity && img.style.opacity !== '1') ? '1' : '0.65';
+                break;
+            // ── Actions ───────────────────────────────────────────
+            case 'reset-style':
+                const savedCursor = 'grab';
+                img.removeAttribute('style');
+                img.style.maxWidth = '100%';
+                img.style.cursor = savedCursor;
+                break;
+            case 'duplicate-img': {
+                const clone = img.cloneNode(true);
+                clone.style.cursor = 'grab';
+                img.parentNode.insertBefore(clone, img.nextSibling);
+                if (typeof showToast === 'function') showToast('Image duplicated \u2705', 'success');
+                break;
+            }
+            case 'add-caption': {
+                // If already in figure, edit existing caption
+                const existingFig = img.closest('figure');
+                if (existingFig) {
+                    const existingCap = existingFig.querySelector('figcaption');
+                    const newCap = prompt('Edit caption:', existingCap ? existingCap.textContent : '');
+                    if (newCap !== null) {
+                        if (existingCap) existingCap.textContent = newCap;
+                        else {
+                            const fc2 = document.createElement('figcaption');
+                            fc2.style.cssText = 'font-size:13px;color:#7f8c8d;margin-top:8px;font-style:italic;text-align:center';
+                            fc2.textContent = newCap;
+                            existingFig.appendChild(fc2);
+                        }
+                    }
+                } else {
+                    const cap = prompt('Enter image caption:');
+                    if (cap) {
+                        const fig = document.createElement('figure');
+                        fig.style.cssText = 'display:block;margin:15px auto;text-align:center;max-width:100%;clear:both';
+                        img.parentNode.insertBefore(fig, img);
+                        fig.appendChild(img);
+                        const fc = document.createElement('figcaption');
+                        fc.style.cssText = 'font-size:13px;color:#7f8c8d;margin-top:8px;font-style:italic;text-align:center';
+                        fc.textContent = cap;
+                        fig.appendChild(fc);
+                    }
+                }
+                break;
+            }
+            case 'delete-img':
+                if (confirm('Delete this image?')) {
+                    const wrapper = img.closest('figure') || img;
+                    wrapper.remove();
+                    hideRow();
+                    return;
+                }
+                break;
+        }
+        _syncToggleButtons(img);
+
+        // Update dimension display after commands
+        _updateDim();
+        img.style.outline = '2.5px solid #2ecc71';
+        img.style.outlineOffset = '3px';
+    });
+
+    // Escape key clears selection
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && _selectedImg) hideRow();
+    });
+
+    // Hide row when clicking outside editor
+    document.addEventListener('click', e => {
+        if (!editorEl.contains(e.target) &&
+            !row.contains(e.target) &&
+            !e.target.closest('.hdb-resize-handle') &&
+            !e.target.closest('#hdb-img-resizer')) {
+            hideRow();
+        }
+    });
+}
+
+
+// ============================================================
+//  🔲  IMAGE RESIZE — Inline wrapper handles (scroll-safe, like Word)
+// ============================================================
+function setupImageResizer() {
+    if (!document.getElementById('hdb-resize-style')) {
+        const s = document.createElement('style');
+        s.id = 'hdb-resize-style';
+        s.textContent = [
+            // Wrapper
+            '.hdb-img-wrapper{position:relative;display:inline-block;line-height:0;vertical-align:bottom;',
+            'outline:2px solid #2ecc71;outline-offset:2px;cursor:default;transition:outline .15s ease}',
+            '.hdb-img-wrapper img{display:block;-webkit-user-drag:none;user-select:none}',
+            // Corner handles — round squares
+            '.hdb-resize-handle{position:absolute;z-index:10000;box-sizing:border-box;',
+            'background:#fff;border:2px solid #2ecc71;border-radius:3px;',
+            'transition:background .15s ease,transform .1s ease}',
+            '.hdb-resize-handle:hover{background:#2ecc71;transform:scale(1.3)}',
+            // Corner handles: 10×10
+            '.hdb-rh-corner{width:10px;height:10px}',
+            // Side handles: pill shape
+            '.hdb-rh-side-ns{width:20px;height:6px;border-radius:3px}',
+            '.hdb-rh-side-ew{width:6px;height:20px;border-radius:3px}',
+            // Live tooltip
+            '#hdb-resize-tip{position:fixed;z-index:999999;pointer-events:none;',
+            'padding:4px 10px;background:rgba(0,0,0,0.75);color:#fff;border-radius:6px;',
+            'font-size:11px;font-family:Poppins,sans-serif;font-weight:600;white-space:nowrap;',
+            'opacity:0;transition:opacity .15s ease;box-shadow:0 4px 12px rgba(0,0,0,0.3)}',
+            '#hdb-resize-tip.visible{opacity:1}'
+        ].join('');
+        document.head.appendChild(s);
+    }
+
+    // Live resize tooltip
+    let _tip = document.getElementById('hdb-resize-tip');
+    if (!_tip) {
+        _tip = document.createElement('div');
+        _tip.id = 'hdb-resize-tip';
+        document.body.appendChild(_tip);
+    }
+
+    let _wrapper = null;
+
+    const HANDLES = [
+        // Corners
+        { pos:'nw', cls:'hdb-rh-corner', style:'top:-5px;left:-5px;',                    cursor:'nw-resize' },
+        { pos:'ne', cls:'hdb-rh-corner', style:'top:-5px;right:-5px;',                   cursor:'ne-resize' },
+        { pos:'se', cls:'hdb-rh-corner', style:'bottom:-5px;right:-5px;',                cursor:'se-resize' },
+        { pos:'sw', cls:'hdb-rh-corner', style:'bottom:-5px;left:-5px;',                 cursor:'sw-resize' },
+        // Sides
+        { pos:'n',  cls:'hdb-rh-side-ns', style:'top:-3px;left:calc(50% - 10px);',      cursor:'n-resize'  },
+        { pos:'s',  cls:'hdb-rh-side-ns', style:'bottom:-3px;left:calc(50% - 10px);',   cursor:'s-resize'  },
+        { pos:'e',  cls:'hdb-rh-side-ew', style:'right:-3px;top:calc(50% - 10px);',     cursor:'e-resize'  },
+        { pos:'w',  cls:'hdb-rh-side-ew', style:'left:-3px;top:calc(50% - 10px);',      cursor:'w-resize'  },
+    ];
+
+    function wrapImg(img) {
+        if (img.parentElement && img.parentElement.classList.contains('hdb-img-wrapper')) {
+            return img.parentElement;
+        }
+        const wrap = document.createElement('span');
+        wrap.className = 'hdb-img-wrapper';
+        img.parentNode.insertBefore(wrap, img);
+        wrap.appendChild(img);
+        HANDLES.forEach(h => {
+            const el = document.createElement('div');
+            el.className = 'hdb-resize-handle ' + h.cls;
+            el.dataset.pos = h.pos;
+            el.style.cssText = h.style + 'cursor:' + h.cursor + ';';
+            el.addEventListener('mousedown', onHandleDown);
+            wrap.appendChild(el);
+        });
+        return wrap;
+    }
+
+    function unwrapImg(wrap) {
+        if (!wrap) return;
+        const img = wrap.querySelector('img');
+        if (img && wrap.parentNode) wrap.parentNode.insertBefore(img, wrap);
+        wrap.remove();
+        _wrapper = null;
+    }
+
+    document.addEventListener('click', e => {
+        if (e.target.tagName === 'IMG' && e.target.closest('.jodit-wysiwyg')) {
+            if (_wrapper && _wrapper !== e.target.parentElement) { unwrapImg(_wrapper); }
+            _wrapper = wrapImg(e.target);
+            // Update dim badge in toolbar
+            const dimEl = document.getElementById('hdb-img-dimensions');
+            if (dimEl) {
+                const r = e.target.getBoundingClientRect();
+                dimEl.textContent = Math.round(r.width) + ' \u00d7 ' + Math.round(r.height);
+            }
+        } else if (!e.target.closest('.hdb-img-wrapper') && !e.target.closest('#hdb-img-toolbar-row')) {
+            unwrapImg(_wrapper);
+        }
+    }, true);
+
+    // ── Resize logic ────────────────────────────────────────────
+    const MIN_SIZE = 40, MAX_SIZE = 2000;
+    let _img, _pos, _startX, _startY, _startW, _startH, _ratio, _lockRatio, _fromCenter;
+
+    function onHandleDown(e) {
+        e.preventDefault(); e.stopPropagation();
+        const wrap = e.currentTarget.closest('.hdb-img-wrapper');
+        _img     = wrap.querySelector('img');
+        _pos     = e.currentTarget.dataset.pos;
+        _startX  = e.clientX; _startY = e.clientY;
+        _startW  = _img.offsetWidth; _startH = _img.offsetHeight;
+        _ratio   = _startW / (_startH || 1);
+        _lockRatio   = !e.shiftKey;  // Default: locked. Shift = free resize.
+        _fromCenter  = e.altKey;
+
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = e.currentTarget.style.cursor;
+        document.addEventListener('mousemove', onResizeMove);
+        document.addEventListener('mouseup',   onResizeUp);
+    }
+
+    function onResizeMove(e) {
+        if (!_img) return;
+        _lockRatio  = !e.shiftKey;
+        _fromCenter = e.altKey;
+
+        let w = _startW + (e.clientX - _startX) * (_fromCenter ? 2 : 1) * (_pos.includes('w') ? -1 : 1);
+        let h = _startH + (e.clientY - _startY) * (_fromCenter ? 2 : 1) * (_pos.includes('n') ? -1 : 1);
+
+        if (_lockRatio) {
+            if (_pos.includes('n') || _pos.includes('s')) w = h * _ratio;
+            else h = w / _ratio;
+        }
+
+        w = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(w)));
+        h = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(h)));
+
+        if (_fromCenter) {
+            w = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(_startW + (w - _startW) * 2)));
+            h = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(_startH + (h - _startH) * 2)));
+        }
+
+        _img.style.width  = w + 'px';
+        _img.style.height = h + 'px';
+
+        const dimEl = document.getElementById('hdb-img-dimensions');
+        if (dimEl) dimEl.textContent = w + ' \u00d7 ' + h;
+
+        _tip.textContent = w + ' \u00d7 ' + h + 'px' + (_lockRatio ? ' \ud83d\udd12' : ' \ud83d\udd13');
+        _tip.style.left  = (e.clientX + 16) + 'px';
+        _tip.style.top   = (e.clientY - 28) + 'px';
+        _tip.classList.add('visible');
+    }
+
+    function onResizeUp() {
+        _img = null;
+        _tip.classList.remove('visible');
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        document.removeEventListener('mousemove', onResizeMove);
+        document.removeEventListener('mouseup',   onResizeUp);
+    }
+
+    document.addEventListener('keydown', e => {
+        if (!_wrapper) return;
+        const img = _wrapper.querySelector('img');
+        if (!img) return;
+        const isArrow = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key);
+        if (!isArrow) return;
+        const inEditor = e.target.closest('.jodit-wysiwyg') || e.target.closest('.hdb-img-wrapper');
+        if (!inEditor) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const w = img.offsetWidth, h = img.offsetHeight;
+        const ratio = w / (h || 1);
+        if (e.key === 'ArrowRight') { const nw = Math.min(MAX_SIZE, w + step); img.style.width = nw + 'px'; img.style.height = Math.round(nw/ratio) + 'px'; }
+        if (e.key === 'ArrowLeft')  { const nw = Math.max(MIN_SIZE, w - step); img.style.width = nw + 'px'; img.style.height = Math.round(nw/ratio) + 'px'; }
+        if (e.key === 'ArrowDown')  { const nh = Math.min(MAX_SIZE, h + step); img.style.height = nh + 'px'; img.style.width = Math.round(nh*ratio) + 'px'; }
+        if (e.key === 'ArrowUp')    { const nh = Math.max(MIN_SIZE, h - step); img.style.height = nh + 'px'; img.style.width = Math.round(nh*ratio) + 'px'; }
+        const dimEl = document.getElementById('hdb-img-dimensions');
+        if (dimEl) { const r = img.getBoundingClientRect(); dimEl.textContent = Math.round(r.width) + ' \u00d7 ' + Math.round(r.height); }
+    });
+}
+
+// ============================================================
+//  ✋  IMAGE DRAG & DROP — Free Margin-Based Movement
+// ============================================================
+function enableImageDragDrop(editorEl) {
+    if (!editorEl) return;
+
+    let _dragImg    = null;
+    let _wrapper    = null;
+    let _isDragging = false;
+    let _startX, _startY;
+    let _startMarginLeft, _startMarginTop;
+
+    // Prevent native HTML5 drag so our custom mousemove dragging works
+    editorEl.addEventListener('dragstart', e => {
+        if (e.target.tagName === 'IMG' || e.target.closest('.hdb-img-wrapper')) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    }, true);
+
+    editorEl.addEventListener('mousedown', e => {
+        if (e.target.tagName !== 'IMG') return;
+        if (e.button !== 0) return;
+        // Don't start drag if on a resize handle
+        if (e.target.closest('.hdb-resize-handle')) return;
+
+        // CRITICAL: Prevent default to stop native drag and text selection from killing mousemove events
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        _dragImg = e.target;
+        _wrapper = _dragImg.closest('.hdb-img-wrapper');
+        
+        // If wrapped, we move the wrapper. If not, we move the image.
+        const targetEl = _wrapper || _dragImg;
+
+        _startX  = e.clientX;
+        _startY  = e.clientY;
+        
+        _startMarginLeft = parseInt(getComputedStyle(targetEl).marginLeft) || 0;
+        _startMarginTop = parseInt(getComputedStyle(targetEl).marginTop) || 0;
+
+        const doc = editorEl.ownerDocument || document;
+
+        const onMove = ev => {
+            const dx = ev.clientX - _startX;
+            const dy = ev.clientY - _startY;
+
+            if (!_isDragging && Math.hypot(dx, dy) < 4) return;
+
+            if (!_isDragging) {
+                _isDragging = true;
+                doc.body.style.userSelect = 'none';
+                targetEl.style.cursor = 'grabbing';
+            }
+
+            // Move freely via margins for pixel-perfect placement (Free Drag)
+            targetEl.style.marginLeft = (_startMarginLeft + dx) + 'px';
+            targetEl.style.marginTop  = (_startMarginTop + dy) + 'px';
+        };
+
+        const onUp = ev => {
+            doc.removeEventListener('mousemove', onMove, true);
+            doc.removeEventListener('mouseup',   onUp, true);
+            doc.body.style.userSelect = '';
+
+            if (_isDragging && targetEl) {
+                targetEl.style.cursor = 'default';
+                if (typeof showToast === 'function') showToast('Image moved freely \u2705', 'success');
+            }
+
+            _isDragging = false;
+            _dragImg    = null;
+            _wrapper    = null;
+        };
+
+        doc.addEventListener('mousemove', onMove, true);
+        doc.addEventListener('mouseup',   onUp, true);
+    }, true);
+
+    // Give all editor images a grab cursor via MutationObserver
+    const obs = new MutationObserver(() => {
+        editorEl.querySelectorAll('img').forEach(img => {
+            if (!img.style.cursor || img.style.cursor === 'default') {
+                img.style.cursor = 'grab';
+            }
+        });
+    });
+    obs.observe(editorEl, { childList: true, subtree: true });
+    editorEl.querySelectorAll('img').forEach(img => { img.style.cursor = 'grab'; });
+}
+
+// ============================================================
+//  📂  DESKTOP FILE DROP — Drag files from OS into editor
+// ============================================================
+function setupEditorDropZone(editorEl) {
+    if (!editorEl) return;
+
+    // Inject overlay CSS once
+    if (!document.getElementById('hdb-dropzone-style')) {
+        const s = document.createElement('style');
+        s.id = 'hdb-dropzone-style';
+        s.textContent = [
+            '#hdb-dropzone-overlay{',
+            'position:absolute;inset:0;z-index:99998;',
+            'display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;',
+            'background:rgba(39,174,96,0.08);',
+            'border:3px dashed #2ecc71;border-radius:10px;',
+            'backdrop-filter:blur(2px);',
+            'animation:dropzonePulse 1.2s ease infinite alternate;',
+            'pointer-events:none;',
+            '}',
+            '@keyframes dropzonePulse{from{background:rgba(39,174,96,.06);border-color:rgba(46,204,113,.5)}',
+            'to{background:rgba(39,174,96,.14);border-color:#2ecc71}}',
+            '#hdb-dropzone-overlay .dz-icon{font-size:42px;animation:dzBounce .7s ease infinite alternate}',
+            '@keyframes dzBounce{from{transform:translateY(0)}to{transform:translateY(-8px)}}',
+            '#hdb-dropzone-overlay .dz-text{font-size:16px;font-weight:700;color:#27ae60;font-family:Poppins,sans-serif}',
+            '#hdb-dropzone-overlay .dz-sub{font-size:12px;color:#7f8c8d;font-family:Poppins,sans-serif}',
+            // Upload progress overlay
+            '#hdb-upload-progress{',
+            'position:fixed;bottom:24px;right:24px;z-index:999999;',
+            'background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);',
+            'border:1px solid rgba(46,204,113,0.3);border-radius:12px;',
+            'padding:14px 18px;min-width:220px;display:none;flex-direction:column;gap:8px;',
+            'font-family:Poppins,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,0.4)',
+            '}',
+            '#hdb-upload-progress .up-title{font-size:12px;font-weight:600;color:#2ecc71}',
+            '#hdb-upload-progress .up-bar-track{height:5px;background:rgba(255,255,255,.1);border-radius:5px;overflow:hidden}',
+            '#hdb-upload-progress .up-bar-fill{height:100%;background:linear-gradient(90deg,#2ecc71,#27ae60);border-radius:5px;transition:width .15s ease}',
+            '#hdb-upload-progress .up-status{font-size:11px;color:rgba(255,255,255,.6)}'
+        ].join('');
+        document.head.appendChild(s);
+    }
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'hdb-dropzone-overlay';
+    overlay.innerHTML = [
+        '<div class="dz-icon">\ud83d\uddbc\ufe0f</div>',
+        '<div class="dz-text">Drop image here</div>',
+        '<div class="dz-sub">PNG, JPG, GIF, WebP \u2014 multiple files supported</div>'
+    ].join('');
+
+    // Wrap editorEl in a relative container if needed
+    const editorParent = editorEl.parentElement;
+    if (editorParent) {
+        if (getComputedStyle(editorParent).position === 'static') {
+            editorParent.style.position = 'relative';
+        }
+        editorParent.appendChild(overlay);
+    }
+
+    // Create progress widget
+    let _progEl = document.getElementById('hdb-upload-progress');
+    if (!_progEl) {
+        _progEl = document.createElement('div');
+        _progEl.id = 'hdb-upload-progress';
+        _progEl.innerHTML = [
+            '<div class="up-title">\ud83d\udce4 Processing images...</div>',
+            '<div class="up-bar-track"><div class="up-bar-fill" id="hdb-up-fill" style="width:0%"></div></div>',
+            '<div class="up-status" id="hdb-up-status">0 / 0</div>'
+        ].join('');
+        document.body.appendChild(_progEl);
+    }
+
+    function showProgress(current, total) {
+        _progEl.style.display = 'flex';
+        const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+        const fill = document.getElementById('hdb-up-fill');
+        const status = document.getElementById('hdb-up-status');
+        if (fill) fill.style.width = pct + '%';
+        if (status) status.textContent = current + ' / ' + total + ' images';
+    }
+
+    function hideProgress() {
+        setTimeout(() => { _progEl.style.display = 'none'; }, 1200);
+    }
+
+    let _dragCounter = 0;
+
+    editorEl.addEventListener('dragenter', e => {
+        if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+        _dragCounter++;
+        overlay.style.display = 'flex';
+        e.preventDefault();
+    }, true);
+
+    editorEl.addEventListener('dragleave', e => {
+        _dragCounter--;
+        if (_dragCounter <= 0) { _dragCounter = 0; overlay.style.display = 'none'; }
+    }, true);
+
+    editorEl.addEventListener('dragover', e => {
+        if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    }, true);
+
+    editorEl.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopImmediatePropagation(); // CRITICAL: Stop Jodit from natively processing the drop and duplicating the image!
+        overlay.style.display = 'none';
+        _dragCounter = 0;
+
+        const allFiles = Array.from(e.dataTransfer.files);
+        if (!allFiles.length) return;
+
+        showProgress(0, allFiles.length);
+        let processed = 0;
+
+        allFiles.forEach((file, idx) => {
+            if (file.type.startsWith('image/')) {
+                // Handle Image
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    compressImageDataUrl(ev.target.result, (compressed) => {
+                        processed++;
+                        showProgress(processed, allFiles.length);
+
+                        // Insert image inline so they can be side-by-side
+                        const imgHtml = '<img src="' + compressed + '" style="max-width:100%;height:auto;border-radius:6px;display:inline-block;margin:4px;cursor:grab;" />';
+                        if (typeof joditEditor !== 'undefined' && joditEditor && joditEditor.s) {
+                            joditEditor.s.insertHTML(imgHtml);
+                        }
+
+                        if (processed >= allFiles.length) hideProgress();
+                    });
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // Handle Non-Image Attachment (PDF, DOCX, TXT, etc.)
+                processed++;
+                showProgress(processed, allFiles.length);
+                const ext = file.name.split('.').pop().toUpperCase();
+                const attachHtml = `&nbsp;<a href="#" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:linear-gradient(to bottom, #f8f9fa, #e9ecef); border:1px solid #ced4da; border-radius:6px; text-decoration:none; color:#2c3e50; font-family:sans-serif; font-size:13px; margin:4px; vertical-align:middle; box-shadow:0 1px 2px rgba(0,0,0,0.05);" contenteditable="false"><span style="font-size:16px;">📎</span><strong style="max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${file.name}</strong><span style="font-size:11px; background:#e0e0e0; padding:2px 6px; border-radius:4px;">${ext}</span></a>&nbsp;`;
+                
+                if (typeof joditEditor !== 'undefined' && joditEditor && joditEditor.s) {
+                    joditEditor.s.insertHTML(attachHtml);
+                }
+                
+                if (processed >= allFiles.length) hideProgress();
+            }
+        });
+    }, true);
+
+    // Global fallback to ensure overlay never gets stuck if user drops outside editor
+    window.addEventListener('drop', () => {
+        _dragCounter = 0;
+        if (overlay) overlay.style.display = 'none';
+    }, true);
+    window.addEventListener('dragend', () => {
+        _dragCounter = 0;
+        if (overlay) overlay.style.display = 'none';
+    }, true);
+}
+
+
+
 document.addEventListener("DOMContentLoaded", function () {
+
     joditEditor = new Jodit('#editor', {
-        placeholder: 'Write Mail Content here...',
+        placeholder: 'Write mail content here... (Arabic or English)',
         language: 'en',
-        direction: 'ltr',
-        height: 400,
+        direction: 'rtl',          // ✅ FIX: RTL as default (Arabic workplace)
+        defaultActionOnPaste: 'insert_as_html', // ✅ Keep images when pasting
+        height: 420,
+        minHeight: 200,
         allowResizeY: true,
         toolbarButtonSize: 'middle',
+        toolbarAdaptive: false,     // Keep all buttons visible, no collapse
+        showCharsCounter: false,    // We have custom counter
+        showWordsCounter: false,
+
+        // ✅ Arabic + English fonts in font list
+        fontValues: {
+            'Cairo (Arabic)': 'Cairo, sans-serif',
+            'Tajawal (Arabic)': 'Tajawal, sans-serif',
+            'Amiri (Arabic)': 'Amiri, serif',
+            'Arial': 'Arial, sans-serif',
+            'Poppins': 'Poppins, sans-serif',
+            'Times New Roman': 'Times New Roman, serif',
+            'Courier New': 'Courier New, monospace',
+            'Georgia': 'Georgia, serif',
+        },
+
+        // ✅ Brand colors in color picker
+        colorPickerDefaultTab: 'color',
+
         buttons: [
+            // Direction controls
+            'rtlBtn', 'ltrBtn', 'fixAllDirs', 'inlineDir', 'arabicQuotes', '|',
             'bold', 'italic', 'underline', 'strikethrough', '|',
             'font', 'fontsize', '|',
             'brush', 'paragraph', '|',
-            'image', 'video', 'table', 'link', '|',
+            // Callout boxes
+            'infoBox', 'warnBox', 'dangerBox', 'successBox', '|',
+            // Content tools
+            'priorityBadge', 'checkList', 'quoteBlock', 'codeBlock', 'divider', '|',
+            // Templates & history
+            'mailTemplate', 'versionHistory', 'focusMode', '|',
+            // Image management buttons
+            'image', 'imgGrid2', 'imgGrid3', '|',
+            'table', 'link', '|',
             'align', 'indent', 'outdent', '|',
             'ul', 'ol', '|',
             'superscript', 'subscript', '|',
@@ -1569,20 +2726,349 @@ document.addEventListener("DOMContentLoaded", function () {
             'undo', 'redo', '|',
             'hr', 'eraser', 'copyformat', 'selectall'
         ],
+
+        extraButtons: [
+            ...Object.values(joditCustomButtons),
+            // Image grid buttons
+            {
+                name: 'imgGrid2', text: '⬛⬛ 2-Col', tooltip: 'Insert 2-column image grid (side by side)',
+                exec(editor) {
+                    editor.s.insertHTML(`
+                        <div style="display:flex;gap:10px;align-items:flex-start;margin:12px 0;">
+                            <div style="flex:1;"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='80'%3E%3Crect fill='%23e8f5e9' width='100' height='80'/%3E%3Ctext x='50' y='45' text-anchor='middle' fill='%2327ae60' font-size='12'%3EImage 1%3C/text%3E%3C/svg%3E" style="width:100%;height:auto;border-radius:6px;cursor:pointer;" /><p style="font-size:12px;color:#888;text-align:center;margin:4px 0">Caption 1</p></div>
+                            <div style="flex:1;"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='80'%3E%3Crect fill='%23e8f5e9' width='100' height='80'/%3E%3Ctext x='50' y='45' text-anchor='middle' fill='%2327ae60' font-size='12'%3EImage 2%3C/text%3E%3C/svg%3E" style="width:100%;height:auto;border-radius:6px;cursor:pointer;" /><p style="font-size:12px;color:#888;text-align:center;margin:4px 0">Caption 2</p></div>
+                        </div>`);
+                }
+            },
+            {
+                name: 'imgGrid3', text: '⬛⬛⬛ 3-Col', tooltip: 'Insert 3-column image grid',
+                exec(editor) {
+                    editor.s.insertHTML(`
+                        <div style="display:flex;gap:8px;align-items:flex-start;margin:12px 0;">
+                            <div style="flex:1;"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='80'%3E%3Crect fill='%23e8f5e9' width='100' height='80'/%3E%3Ctext x='50' y='45' text-anchor='middle' fill='%2327ae60' font-size='12'%3EImage 1%3C/text%3E%3C/svg%3E" style="width:100%;height:auto;border-radius:6px;cursor:pointer;" /></div>
+                            <div style="flex:1;"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='80'%3E%3Crect fill='%23e8f5e9' width='100' height='80'/%3E%3Ctext x='50' y='45' text-anchor='middle' fill='%2327ae60' font-size='12'%3EImage 2%3C/text%3E%3C/svg%3E" style="width:100%;height:auto;border-radius:6px;cursor:pointer;" /></div>
+                            <div style="flex:1;"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='80'%3E%3Crect fill='%23e8f5e9' width='100' height='80'/%3E%3Ctext x='50' y='45' text-anchor='middle' fill='%2327ae60' font-size='12'%3EImage 3%3C/text%3E%3C/svg%3E" style="width:100%;height:auto;border-radius:6px;cursor:pointer;" /></div>
+                        </div>`);
+                }
+            }
+        ],
+
         uploader: { insertImageAsBase64URI: true },
+        
+        // ✅ Disable Jodit's native conflicting image features so our custom premium ones take over
+        disablePlugins: 'imageProcessor,imageProperties,resizer',
+        image: { editSrc: false, editTitle: false, editAlt: false },
+
+        // ✅ THE KEY FIX: unicode-bidi:plaintext makes mixed Arabic/English work exactly like Outlook
+        // Each paragraph gets its own bidi direction based on content, not the parent container
+        style: {
+            'font-family': "'Cairo', 'Poppins', sans-serif",
+            'font-size': '15px',
+            'line-height': '1.9',
+            'padding': '16px',
+            'unicode-bidi': 'plaintext',  // ⭐ THE OUTLOOK SECRET
+        },
+
         events: {
+            // ✅ afterInit: inject CSS directly into editor iframe — the definitive bidi fix
+            afterInit: function() {
+                setTimeout(() => {
+                    try {
+                        const editorEl2 = joditEditor.editor;
+                        if (editorEl2) {
+                            // Scope CSS to .jodit-wysiwyg — don't affect main document elements
+                            const existing = document.getElementById('hdb-bidi-fix');
+                            if (!existing) {
+                                const style = document.createElement('style');
+                                style.id = 'hdb-bidi-fix';
+                                style.innerHTML = `
+                                    /* ⭐ Scoped bidi fix — only targets editor content */
+                                    .jodit-wysiwyg { unicode-bidi: plaintext !important; }
+                                    .jodit-wysiwyg p, .jodit-wysiwyg div, .jodit-wysiwyg li,
+                                    .jodit-wysiwyg h1, .jodit-wysiwyg h2, .jodit-wysiwyg h3,
+                                    .jodit-wysiwyg h4, .jodit-wysiwyg blockquote,
+                                    .jodit-wysiwyg td, .jodit-wysiwyg th {
+                                        unicode-bidi: plaintext !important;
+                                    }
+                                    .jodit-wysiwyg .bidi-warn {
+                                        outline: 2px dashed #f39c12 !important;
+                                    }
+                                `;
+                                document.head.appendChild(style);
+                            }
+                        }
+                    } catch(e) { console.warn('CSS inject failed:', e); }
+
+                    // ─── Windows-standard Direction Shortcuts ─────────────────────
+                    try {
+                    const editorEl = joditEditor.editor;
+                    if (editorEl) {
+                    let _shiftOnlyDown = false;
+                    let _shiftSide     = 0; // 1=left, 2=right
+
+                    editorEl.addEventListener('keydown', (e) => {
+
+
+                        // ── Track if ONLY Shift is pressed (no other key) ──────────
+                        if (e.key === 'Shift' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                            _shiftOnlyDown = true;
+                            _shiftSide = e.location; // 1=left, 2=right
+                        } else {
+                            _shiftOnlyDown = false; // another key pressed → not "Shift alone"
+                        }
+
+                        // ── Alt+Shift → toggle direction ───────────────────────────
+                        if (e.altKey && e.shiftKey && !e.ctrlKey) {
+                            e.preventDefault();
+                            const sel = (editorEl.ownerDocument || document).getSelection();
+                            if (!sel || sel.rangeCount === 0) return;
+                            const node = sel.getRangeAt(0).startContainer;
+                            const block = (node.nodeType === 3 ? node.parentElement : node)
+                                .closest('p,li,h1,h2,h3,h4,div,blockquote');
+                            if (block) {
+                                const cur = block.dir || 'rtl';
+                                const nd  = cur === 'rtl' ? 'ltr' : 'rtl';
+                                block.dir = nd;
+                                block.dataset.dirLocked = '1';
+                                block.style.textAlign = nd === 'rtl' ? 'right' : 'left';
+                                updateDirIndicator(joditEditor.editor);
+                            }
+                            return;
+                        }
+
+                        // ── Spacebar → smart direction check after each word ───────
+                        if (e.key === ' ' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                            const doc2 = editorEl.ownerDocument || document;
+                            const sel2 = doc2.getSelection();
+                            if (sel2 && sel2.rangeCount > 0) {
+                                const nd2 = sel2.getRangeAt(0).startContainer;
+                                const blk2 = (nd2.nodeType === 3 ? nd2.parentElement : nd2)
+                                    .closest('p,li,h1,h2,h3,h4,div,blockquote');
+                                // Only re-evaluate if NOT manually locked
+                                if (blk2 && !blk2.dataset.dirLocked) {
+                                    const txt = (blk2.innerText || '').trim();
+                                    const detectedDir = getStrongDir(txt);
+                                    if (detectedDir === 'rtl') { blk2.dir = 'rtl'; blk2.style.textAlign = 'right'; }
+                                    else if (detectedDir === 'ltr') { blk2.dir = 'ltr'; blk2.style.textAlign = 'left'; }
+                                    updateDirIndicator(joditEditor.editor);
+                                }
+                            }
+                        }
+
+                        // ── Arabic Punctuation Auto-Convert ───────────────────────
+                        const doc2 = editorEl.ownerDocument || document;
+                        const sel2 = doc2.getSelection();
+                        if (!sel2 || sel2.rangeCount === 0) return;
+                        const node2 = sel2.getRangeAt(0).startContainer;
+                        const block2 = (node2.nodeType === 3 ? node2.parentElement : node2)
+                            .closest('p,li,h1,h2,h3,h4,div,blockquote');
+                        const isArabicPara = block2 && (
+                            block2.dir === 'rtl' ||
+                            getStrongDir((block2.innerText || '').trim()) === 'rtl'
+                        );
+
+                        if (isArabicPara) {
+                            if (e.key === ',' && !e.ctrlKey && !e.altKey) {
+                                e.preventDefault();
+                                doc2.execCommand('insertText', false, '،');
+                            } else if (e.key === '?' && !e.ctrlKey && !e.altKey) {
+                                e.preventDefault();
+                                doc2.execCommand('insertText', false, '؟');
+                            } else if (e.key === ';' && !e.ctrlKey && !e.altKey) {
+                                e.preventDefault();
+                                doc2.execCommand('insertText', false, '؛');
+                            }
+                        }
+                    });
+
+                    // ── keyup: detect Right Shift alone OR Left Shift alone ──────
+                    editorEl.addEventListener('keyup', (e) => {
+                        if (e.key === 'Shift' && _shiftOnlyDown) {
+                            const doc3 = editorEl.ownerDocument || document;
+                            const sel3 = doc3.getSelection();
+                            if (!sel3 || sel3.rangeCount === 0) { _shiftOnlyDown = false; return; }
+                            const node3 = sel3.getRangeAt(0).startContainer;
+                            const block3 = (node3.nodeType === 3 ? node3.parentElement : node3)
+                                .closest('p,li,h1,h2,h3,h4,div,blockquote');
+                            if (block3) {
+                                if (_shiftSide === 2) {
+                                    // ✅ RIGHT SHIFT → RTL (Arabic) — Windows standard
+                                    block3.dir = 'rtl';
+                                    block3.style.textAlign = 'right';
+                                    block3.dataset.dirLocked = '1';
+                                } else if (_shiftSide === 1) {
+                                    // ✅ LEFT SHIFT → LTR (English) — Windows standard
+                                    block3.dir = 'ltr';
+                                    block3.style.textAlign = 'left';
+                                    block3.dataset.dirLocked = '1';
+                                }
+                                updateDirIndicator(joditEditor.editor);
+                            }
+                        }
+                        _shiftOnlyDown = false;
+                        try { updateDirIndicator(joditEditor.editor); } catch(err) {}
+                    });
+
+                    editorEl.addEventListener('click', () => {
+                        try { updateDirIndicator(joditEditor.editor); } catch(e) {}
+                    });
+
+                    // ─── Auto Language Detection (Win+Space equivalent) ──────────
+                    // Win+Space switches keyboard language at OS level (browser can't see it).
+                    // Solution: detect the language of EVERY typed character via 'input' event.
+                    // The first Arabic character → RTL instantly. First Latin → LTR instantly.
+                    // This fires immediately after Win+Space + first keystroke.
+                    editorEl.addEventListener('input', (e) => {
+                        try {
+                            const typed = e.data; // the actual character(s) typed
+                            if (!typed) return;
+
+                            const doc4 = editorEl.ownerDocument || document;
+                            const sel4 = doc4.getSelection();
+                            if (!sel4 || sel4.rangeCount === 0) return;
+
+                            const node4 = sel4.getRangeAt(0).startContainer;
+                            const block4 = (node4.nodeType === 3 ? node4.parentElement : node4)
+                                .closest('p,li,h1,h2,h3,h4,div,blockquote');
+
+                            // Only auto-switch if NOT manually locked by user
+                            if (!block4 || block4.dataset.dirLocked) return;
+
+                            // Check FIRST strong character in the typed text
+                            const detectedDir = getStrongDir(typed);
+                            if (detectedDir === 'rtl') {
+                                block4.dir = 'rtl';
+                                block4.style.textAlign = 'right';
+                                updateDirIndicator(joditEditor.editor);
+                            } else if (detectedDir === 'ltr') {
+                                block4.dir = 'ltr';
+                                block4.style.textAlign = 'left';
+                                updateDirIndicator(joditEditor.editor);
+                            }
+                        } catch(err) {}
+                    });
+
+                    } // end if(editorEl)
+                    } catch(e) { console.warn('Shortcuts setup failed:', e); }
+
+
+                    // ✅ Setup image click controls (header toolbar row)
+                    try { setupImageClickControls(joditEditor.editor); } catch(e) {}
+
+                    // ✅ Setup image resize handles (8-point, premium pill/round handles)
+                    try { setupImageResizer(); } catch(e) {}
+
+                    // ✅ Enable drag & drop image repositioning (within editor)
+                    try { enableImageDragDrop(joditEditor.editor); } catch(e) {}
+
+                    // ✅ Enable desktop file drag-into-editor with overlay + progress
+                    try { setupEditorDropZone(joditEditor.editor); } catch(e) {}
+
+                    // ✅ Custom paste handler — intercept BEFORE Jodit processes paste
+                    try {
+                        const editorForPaste = joditEditor.editor;
+                        if (editorForPaste) {
+                            editorForPaste.addEventListener('paste', (pasteEvent) => {
+                                const cd = pasteEvent.clipboardData || window.clipboardData;
+                                if (!cd) return;
+
+                                // Priority 1: Direct image from clipboard (screenshot, Snipping Tool, etc.)
+                                const items = cd.items;
+                                if (items) {
+                                    for (const item of items) {
+                                        if (item.type.startsWith('image/')) {
+                                            pasteEvent.preventDefault();
+                                            pasteEvent.stopPropagation();
+                                            const blob = item.getAsFile();
+                                            if (!blob) return;
+                                            const reader = new FileReader();
+                                            reader.onload = (ev) => {
+                                                compressImageDataUrl(ev.target.result, (compressed) => {
+                                                    joditEditor.s.insertHTML(
+                                                        `<img src="${compressed}" style="max-width:100%;height:auto;border-radius:6px;display:block;margin:8px 0;cursor:pointer;" />`
+                                                    );
+                                                    if (typeof showToast === 'function') showToast('Image inserted ✅', 'success');
+                                                });
+                                            };
+                                            reader.readAsDataURL(blob);
+                                            return;
+                                        }
+                                    }
+                                }
+
+                                // Priority 2: HTML from Word/Outlook — clean it, keep images
+                                const htmlData = cd.getData('text/html');
+                                if (htmlData && (htmlData.includes('mso-') || htmlData.includes('MsoNormal') || htmlData.includes('urn:schemas-microsoft'))) {
+                                    pasteEvent.preventDefault();
+                                    pasteEvent.stopPropagation();
+                                    const cleaned = cleanWordHtml(htmlData);
+                                    joditEditor.s.insertHTML(cleaned);
+                                    if (typeof showToast === 'function') showToast('Word content cleaned ✅', 'success');
+                                    return;
+                                }
+                                // Otherwise: let Jodit handle it normally (text, web HTML, etc.)
+                            }, true); // capture phase — runs BEFORE Jodit's own paste handler
+                        }
+                    } catch(e) { console.warn('Paste handler failed:', e); }
+
+                    try { applySmartDirection(joditEditor.editor); } catch(e) {}
+                }, 300);
+            },
+
+
             change: function () {
                 if (!joditEditor) return;
-                const text = joditEditor.value.replace(/<[^>]*>/g, '');
+                const html = joditEditor.value;
+                const text = html.replace(/<[^>]*>/g, '');
+
+                // ✅ Char + Word + Reading time counter
+                const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+                const readMins = Math.ceil(words / 200);
                 const el = document.getElementById('charCountDisplay');
                 if (el) {
-                    el.innerText = text.length + ' chars';
-                    el.style.color = text.length > 800 ? 'red' : '#999';
+                    el.innerText = `${text.length} chars · ${words} words · ~${readMins} min read`;
+                    el.style.color = text.length > 1000 ? '#e74c3c' : text.length > 600 ? '#f39c12' : '#27ae60';
                 }
+
+                // ✅ Auto-save
+                triggerAutoSave();
+
+                // ✅ Per-paragraph smart direction (only for unlocked paragraphs)
+                try { applySmartDirection(joditEditor.editor); } catch(e) {}
+            },
+
+            afterSetValue: function() {
+                // Apply direction after content is set (e.g. when editing existing mail)
+                setTimeout(() => {
+                    try { applySmartDirection(joditEditor.editor); } catch(e) {}
+                }, 100);
             }
         }
     });
+
+    // ✅ Restore draft if available
+    const savedDraft = localStorage.getItem('adminDraftContent');
+    const draftStatus = document.getElementById('autoSaveStatus');
+    if (savedDraft && draftStatus) {
+        const savedTime = localStorage.getItem('adminDraftSaved') || '';
+        draftStatus.innerHTML = `💾 Draft saved at ${savedTime} — <a href="#" onclick="restoreDraft(); return false;" style="color:#3498db;">Restore?</a>`;
+    }
 });
+
+function restoreDraft() {
+    const saved = localStorage.getItem('adminDraftContent');
+    if (saved && joditEditor) {
+        joditEditor.value = saved;
+        showToast('Draft restored ✅', 'success');
+        setTimeout(() => { try { applySmartDirection(joditEditor.editor); } catch(e){} }, 200);
+    }
+}
+
+function clearEditorDraft() {
+    localStorage.removeItem('adminDraftContent');
+    localStorage.removeItem('adminDraftSaved');
+}
+
 
 window.searchTimeout = null;
 window.lastSearchTerm = "";
@@ -1625,10 +3111,12 @@ function executeSearch(val) {
             "code", "topic", "idea", "sender", "keywords", "category", "tags", "cleanContent"
         ],
         shouldSort: true,
-        threshold: 0.0, // EXACT match only
+        // ✅ FIX #12: Enable extremely forgiving fuzzy tolerance — handle Typos, Eng/Ar swap, misspellings
+        threshold: 0.6,
+        distance: 1000,
         ignoreLocation: true,
         minMatchCharLength: 2,
-        includeMatches: true // ⭐ التعديل 2
+        includeMatches: true
     };
 
     const fuse = new Fuse(currentViewMails, options);
@@ -1665,22 +3153,47 @@ function updateSearchHistory(val) {
     }
 }
 
+// ✅ FIX #11: Show only last 2 searches by default + expand arrow for full list
 function showSearchHistory() {
     const box = document.getElementById('searchHistoryBox');
+    if (!box) return;
 
-    // Feature 4: Inject contextual common top searches if history is empty
     let listToRender = searchHistory;
-    if (searchHistory.length === 0) {
-        listToRender = ["🔥 Top Search: credit cards", "🔥 Top Search: fraud alerts", "🔥 Top Search: loans policy"];
+    const hasMore = listToRender.length > 2;
+    const visibleItems = listToRender.slice(0, 2);
+    const hiddenItems  = listToRender.slice(2);
+
+    // M1: Use onmousedown instead of onclick — fires BEFORE blur so dropdown stays open
+    const makeAction = (cleanTerm) =>
+        `onmousedown="event.preventDefault(); document.getElementById('searchInput').value='${cleanTerm}'; debouncedSearch('${cleanTerm}'); document.getElementById('searchHistoryBox').classList.remove('show');"`;
+
+    // If history empty, show contextual suggestions
+    if (listToRender.length === 0) {
+        listToRender = ["🔥 Top: credit cards", "🔥 Top: fraud alerts", "🔥 Top: loans policy"];
+        box.innerHTML = listToRender.map(term => {
+            const cleanTerm = term.replace(/🔥 Top: /, '');
+            return `<div ${makeAction(cleanTerm)}>🕒 ${term}</div>`;
+        }).join('');
+        box.classList.add('show');
+    } else {
+        const renderItem = term => {
+            const cleanTerm = term.replace(/🔥 Top: /, '');
+            return `<div class="sh-item" ${makeAction(cleanTerm)}>🕒 ${term}</div>`;
+        };
+
+        const expandBtnHtml = hasMore
+            ? `<div class="sh-expand-btn" id="shExpandBtn" onmousedown="event.preventDefault(); expandSearchHistory(event)">▼ Show ${hiddenItems.length} more</div>`
+            : '';
+
+        box.innerHTML =
+            visibleItems.map(renderItem).join('') +
+            `<div id="shHiddenItems" style="display:none;">${hiddenItems.map(renderItem).join('')}</div>` +
+            expandBtnHtml;
+
+        box.classList.add('show');
     }
 
-    box.innerHTML = listToRender.map(term => {
-        const cleanTerm = term.replace('🔥 Top Search: ', '');
-        return `<div onclick="document.getElementById('searchInput').value='${cleanTerm}'; debouncedSearch('${cleanTerm}'); document.getElementById('searchHistoryBox').classList.remove('show');">🕒 ${term}</div>`;
-    }).join('');
-    box.classList.add('show');
-
-    // Close on click outside
+    // Close on outside click
     setTimeout(() => {
         document.addEventListener('click', function closeBox(e) {
             if (!e.target.closest('.search-box')) {
@@ -1689,6 +3202,20 @@ function showSearchHistory() {
             }
         });
     }, 100);
+}
+
+function expandSearchHistory(e) {
+    e.stopPropagation();
+    const hidden = document.getElementById('shHiddenItems');
+    const btn    = document.getElementById('shExpandBtn');
+    if (!hidden || !btn) return;
+    if (hidden.style.display === 'none') {
+        hidden.style.display = 'block';
+        btn.innerHTML = '▲ Show less';
+    } else {
+        hidden.style.display = 'none';
+        btn.innerHTML = `▼ Show ${hidden.querySelectorAll('.sh-item').length} more`;
+    }
 }
 
 function setSearchValue(val) {
@@ -2101,9 +3628,11 @@ function populateDropdown(field) {
     const itemsContainer = document.getElementById(field + "Items");
     if (!itemsContainer) return;
 
-    // ⭐ تعديل 3: Cascading - نحسب المتاح بناءً على الفلاتر التانية النشطة
+    // Cascading: calc available data based on other active filters
     let tempFilters = { ...activeFilters };
     delete tempFilters[field];
+    // Also exclude 'category' temp filter when showing code column
+    if (field === 'code') delete tempFilters['category'];
 
     let mailsForDropdown = getVisibleMails();
     if (Object.keys(tempFilters).length > 0) {
@@ -2117,6 +3646,31 @@ function populateDropdown(field) {
                 return (m[f] || "---") === filterVal;
             });
         });
+    }
+
+    // For 'code' field — show both unique codes AND categories as filter groups
+    if (field === 'code') {
+        const uniqueCategories = [...new Set(mailsForDropdown.map(m => m.category || 'General'))].sort();
+        const uniqueCodes = [...new Set(mailsForDropdown.map(m => m.code || '---'))].sort();
+
+        itemsContainer.innerHTML =
+            '<div style="padding:4px 10px; font-size:10px; font-weight:700; color:#7f8c8d; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(0,0,0,0.07);">Filter by Status</div>' +
+            uniqueCategories.map(val => `
+                <div class="menu-item-option ${activeFilters['category'] === val ? 'active' : ''}" onclick="applyFilter('category', '${val.replace(/'/g, "\\'")}')"
+                    style="padding-left:18px;">
+                    ${val}
+                    ${activeFilters['category'] === val ? '<span>✓</span>' : ''}
+                </div>
+            `).join('') +
+            '<div style="padding:4px 10px; font-size:10px; font-weight:700; color:#7f8c8d; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(0,0,0,0.07); border-top:1px solid rgba(0,0,0,0.07); margin-top:4px;">Filter by Code</div>' +
+            uniqueCodes.map(val => `
+                <div class="menu-item-option ${activeFilters['code'] === val ? 'active' : ''}" onclick="applyFilter('code', '${val.replace(/'/g, "\\'")}')"
+                    style="padding-left:18px;">
+                    ${val}
+                    ${activeFilters['code'] === val ? '<span>✓</span>' : ''}
+                </div>
+            `).join('');
+        return;
     }
 
     let uniqueValues = [];
@@ -2150,8 +3704,24 @@ function applyFilter(field, value) {
     }
 
     refreshDisplay();
+    // Update filter icons — 'category' uses the 'code' column icon
     ['code', 'topic', 'idea', 'keywords'].forEach(f => updateFilterIcon(f));
-    renderActiveFiltersBar(); // تحديث شريط الفلاتر النشطة
+    // Show code column icon active when category filter is on
+    if (field === 'category') {
+        const codeIcon = document.querySelector('[onclick*="code"] .filter-icon');
+        if (codeIcon) {
+            if (activeFilters['category']) {
+                codeIcon.classList.add('active');
+                codeIcon.style.opacity = '1';
+                codeIcon.style.color = '#f1c40f';
+            } else {
+                codeIcon.classList.remove('active');
+                codeIcon.style.opacity = '0.4';
+                codeIcon.style.color = 'white';
+            }
+        }
+    }
+    renderActiveFiltersBar();
 
     // Close dropdown after selection
     document.querySelectorAll(".dropdown-content").forEach(d => d.classList.remove("show"));
@@ -2340,7 +3910,30 @@ function closeMailBox() {
         return;
     }
 
-    // Otherwise fully close the mail box
+    // ✅ FIX #12: Ensure side panel mode is properly turned off so table expands again SMOOTHLY
+    if (box.classList.contains('side-panel')) {
+        box.classList.remove('visible', 'minimized', 'floating'); // ✅ FIX: Must remove visible so it can be re-opened later!
+        box.style.transition = 'all 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
+        box.style.opacity = '0';
+        box.style.flex = '0 0 0%';
+        box.style.width = '0px';
+        box.style.minWidth = '0px';
+        box.style.padding = '0px';
+        box.style.borderWidth = '0px';
+        box.style.margin = '0px';
+        
+        setTimeout(() => {
+            toggleSidePanelMode();
+            box.style = ''; // reset inline styles
+            box.style.display = 'none';
+            box.innerHTML = '<h3 id="mailPlaceholder" style="display:none;">Select a mail</h3>';
+            box.removeAttribute('data-category');
+            window.currentlyOpenMailId = null;
+        }, 380);
+        return;
+    }
+
+    // Otherwise fully close the normal mail box
     box.classList.remove('visible', 'minimized', 'floating');
     box.style.opacity = '0';
     box.style.transform = 'translateY(20px)';
@@ -2606,39 +4199,72 @@ function launchMailConfetti() {
 
 /** Toggle Minimize mail box — fold to header strip */
 function toggleMailMinimize() {
-    const box = document.getElementById('mailBox');
+    const box = document.getElementById("mailBox");
     if (!box) return;
-    const btn = box.querySelector('.mail-box-minimize-btn');
-    if (box.classList.contains('minimized')) {
-        box.classList.remove('minimized');
-        if (btn) btn.textContent = '−';
-        const hdr = box.querySelector('.mail-box-header');
+    const btn = box.querySelector(".mail-box-minimize-btn");
+    
+    // If in Zen Mode, just exit Zen Mode instead of minimizing
+    if (box.classList.contains("zen-mode")) {
+        toggleMailZenMode(false);
+        return;
+    }
+    
+    if (box.classList.contains("minimized")) {
+        box.classList.remove("minimized");
+        if (btn) btn.innerHTML = "➖"; // Minus icon
+        const hdr = box.querySelector(".mail-box-header");
         if (hdr) hdr.onclick = null;
     } else {
-        if (box.classList.contains('zen-mode')) toggleMailZenMode(false);
-        box.classList.add('minimized');
-        if (btn) btn.textContent = '□';
-        const hdr = box.querySelector('.mail-box-header');
+        box.classList.add("minimized");
+        if (btn) btn.innerHTML = "➕"; // Plus icon
+        const hdr = box.querySelector(".mail-box-header");
         if (hdr) hdr.onclick = (e) => {
-            if (!e.target.closest('.mail-box-action-btn') && !e.target.closest('.mail-box-minimize-btn'))
+            if (!e.target.closest(".mail-box-action-btn") && !e.target.closest(".mail-box-minimize-btn")) {
                 toggleMailMinimize();
+            }
         };
     }
 }
 
-/** Toggle Side Panel Mode */
+/** Toggle Side Panel Mode — FIX #14 */
 function toggleSidePanelMode() {
     const box = document.getElementById('mailBox');
     if (!box) return;
+
+    const sidePanelBtn = box.querySelector('.mail-box-minimize-btn[title="Side Panel"]') ||
+                         box.querySelector('.mail-box-minimize-btn');
+
     if (box.classList.contains('side-panel')) {
+        // --- CLOSE side panel ---
         box.classList.remove('side-panel');
         document.body.classList.remove('side-panel-open');
+        if (sidePanelBtn) sidePanelBtn.classList.remove('sp-active');
+
+        // \u2705 FIX #14a: Force table area to restore full width
+        const tableArea = document.getElementById('tableContentArea') || document.querySelector('.table-area');
+        if (tableArea) {
+            tableArea.style.flex = '';
+            tableArea.style.maxWidth = '';
+        }
     } else {
-        // Exit other modes first
+        // --- OPEN side panel ---
         box.classList.remove('zen-mode', 'minimized');
         toggleMailZenMode(false);
         box.classList.add('side-panel');
         document.body.classList.add('side-panel-open');
+
+        // \u2705 FIX #14b: Mark button active so user sees it is toggled on
+        if (sidePanelBtn) sidePanelBtn.classList.add('sp-active');
+
+        // \u2705 FIX #14c: Force overflow-y:auto on mailBoxBody in case it was overridden
+        const bodyEl = document.getElementById('mailBoxBody');
+        if (bodyEl) {
+            bodyEl.style.overflowY = 'auto';
+            bodyEl.style.maxHeight = '';
+        }
+
+        // \u2705 FIX #14d: Re-run checkMailFade to sync scroll arrows for side-panel view
+        setTimeout(checkMailFade, 80);
     }
 }
 
@@ -3009,8 +4635,9 @@ function updateBulkActionsBar() {
 
     if (!bulkBar || !countLabel) return;
 
-    if (!isAdminSession || selected.length === 0) {
+    if (!isAdminSession || selected.length < 2) {
         bulkBar.style.display = 'none';
+        // ✅ FIX #6: Bulk delete only appears with 2+ selected mails
     } else {
         bulkBar.style.display = 'flex';
         countLabel.innerText = `${selected.length}`;
@@ -3049,22 +4676,13 @@ async function confirmReadMail(id, buttonEl, version) {
     agentConfirmedVersions[id] = version;
     localStorage.setItem('agentConfirmedVersions', JSON.stringify(agentConfirmedVersions));
 
-    // Effect: Fade out button + Confetti
-    buttonEl.style.opacity = '0.5';
+    // ✅ FIX #10: Remove confetti — just silent feedback without removing the button to avoid layout jump
+    buttonEl.innerHTML = '✅ Confirmed!';
+    buttonEl.style.background = '#27ae60';
+    buttonEl.style.transform = 'none';
     buttonEl.disabled = true;
-    buttonEl.innerText = '✅ Confirmed!';
-    launchMailConfetti();
 
-    // Fade and remove after delay
-    setTimeout(() => {
-        buttonEl.style.transition = 'all 0.5s ease';
-        buttonEl.style.opacity = '0';
-        buttonEl.style.transform = 'scale(0.9)';
-        setTimeout(() => {
-            buttonEl.remove();
-            showToast("✅ Thank you! Read confirmation recorded", "success");
-        }, 500);
-    }, 800);
+    // We do NOT remove the button anymore, to keep the row height stable.
 
     // Sync to Firestore in background - don't wait for it
     // Minimize data to save space (Firestore 1MB limit)
@@ -3372,6 +4990,8 @@ async function updateExistingEntry(isDraft = false) {
         }
 
         cancelEdit();
+        // ✅ FIX #9: Clear from publishedMailIds so scheduled trigger works fresh after edit
+        if (typeof window._publishedMailIds !== 'undefined') window._publishedMailIds.delete(currentlyEditingId);
         showToast("Mail updated successfully 🔄", "success");
     } catch (e) {
         console.error("Update Error:", e);
@@ -3497,7 +5117,7 @@ function openManageUsers() {
     document.getElementById('manageUsersModal').style.display = 'flex';
     document.getElementById('newUserName').value = '';
     document.getElementById('newUserPass').value = '';
-    document.getElementById('newUserRole').value = 'agent';
+    const roleEl = document.getElementById('newUserRole'); if (roleEl) roleEl.value = 'agent';
 
     if (!usersUnsubscribe) {
         window.allUsersCache = []; // For search filtering
@@ -3527,26 +5147,29 @@ function renderUsersAdminList(users) {
 
         let lastLoginHTML = u.lastLogin ? `<div style="font-size:10px; color:#95a5a6; margin-top:2px;">🕒 Active: ${new Date(u.lastLogin).toLocaleString()}</div>` : '';
 
-        // Hide delete for protected accounts
-        const isProtected = ['primary_admin'].includes((u.username || '').toLowerCase());
-        const deleteBtnHTML = isProtected ? `<span style="font-size:18px;" title="Protected Account">🛡️</span>` : `<button onclick="deleteDocUser('${u.id}', '${u.username}')" style="background:#e74c3c; color:white; border:none; border-radius:4px; padding:5px 10px; cursor:pointer; font-size:12px;">Delete</button>`;
+        // T8: Hide delete for protected accounts AND for all admin role accounts
+        const isProtected = ['primary_admin'].includes((u.username || '').toLowerCase()) || u.role === 'admin';
+        const deleteBtnHTML = isProtected ? `<span style="font-size:18px;" title="${u.role === 'admin' ? 'Admin — Cannot Delete' : 'Protected Account'}">🛡️</span>` : `<button onclick="deleteDocUser('${u.id}', '${u.username}')" style="background:#e74c3c; color:white; border:none; border-radius:4px; padding:5px 10px; cursor:pointer; font-size:12px;">Delete</button>`;
 
         listArea.innerHTML += `
-            <div class="user-row-admin" data-name="${u.username.toLowerCase()}" style="display:flex; justify-content:space-between; align-items:center; padding:12px 10px; border-bottom:1px solid #eee;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div class="user-avatar">${avatarStr}</div>
-                    <div>
-                        <strong style="color:#2c3e50;">${u.username}</strong>
-                        <span class="${roleBadgeClass}">${u.role}</span>
+            <div class="user-row-admin" data-name="${u.username.toLowerCase()}" style="display:flex; justify-content:space-between; align-items:center; padding:16px; margin-bottom:10px; background:white; border:1px solid #eef2f5; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+                <div style="display:flex; align-items:center; gap:14px; flex:1;">
+                    <div class="user-avatar" style="width:40px; height:40px; font-size:16px;">${avatarStr}</div>
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <strong style="color:#2c3e50; font-size:15px;">${u.username}</strong>
+                            <span class="${roleBadgeClass}">${u.role}</span>
+                        </div>
                         ${lastLoginHTML}
                     </div>
                 </div>
                 
-                <div style="display:flex; gap:15px; align-items:center;">
-                    <div class="pass-container" title="User Password">
-                        <input type="password" id="pass_${u.id}" class="pass-input" value="${u.password || ''}" readonly>
+                <div style="display:flex; gap:12px; align-items:center;">
+                    <div class="pass-container" title="User Password" style="background:#f8f9fa; padding:4px 8px; border-radius:8px; border:1px solid #e9ecef;">
+                        <input type="password" id="pass_${u.id}" class="pass-input" value="${u.password || ''}" readonly style="background:transparent; border:none; width:90px; color:#555; font-size:13px;">
                         <button class="icon-btn" onclick="toggleAdminPassVisibility('${u.id}')" title="Show/Hide">👁️</button>
                         <button class="icon-btn" onclick="copyAdminPass('${u.id}')" title="Copy">📋</button>
+                        <button class="icon-btn" onclick="changeUserPassword('${u.id}', '${(u.username||'').replace(/'/g, '')}')" title="Change Password" style="color:#e67e22;">✏️</button>
                     </div>
                     ${deleteBtnHTML}
                 </div>
@@ -3576,10 +5199,100 @@ function copyAdminPass(id) {
     });
 }
 
+// M6: Inline password change — premium UI instead of browser prompt
+async function changeUserPassword(userId, username) {
+    // Remove any existing inline form for this user
+    const existingForm = document.getElementById(`pass-form-${userId}`);
+    if (existingForm) { existingForm.remove(); return; } // Toggle off if already open
+
+    // Find the user row
+    const userRow = document.querySelector(`.user-row-admin[data-name="${username.toLowerCase()}"]`);
+    if (!userRow) return;
+
+    // Build inline form
+    const formDiv = document.createElement('div');
+    formDiv.id = `pass-form-${userId}`;
+    formDiv.style.cssText = [
+        'padding: 14px 16px',
+        'background: linear-gradient(135deg, rgba(46,125,50,0.06), rgba(39,174,96,0.03))',
+        'border: 1px solid rgba(46,204,113,0.2)',
+        'border-radius: 10px',
+        'margin: 6px 10px 10px 10px',
+        'display: flex',
+        'flex-direction: column',
+        'gap: 10px',
+        'animation: slideDown 0.2s ease'
+    ].join(';');
+
+    if (!document.getElementById('pass-form-style')) {
+        const s = document.createElement('style');
+        s.id = 'pass-form-style';
+        s.textContent = '@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}';
+        document.head.appendChild(s);
+    }
+
+    formDiv.innerHTML = `
+        <div style="font-size:12px; font-weight:700; color:#2e7d32; margin-bottom:2px;">🔐 Change Password for "<strong>${username}</strong>"</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <input type="password" id="newPassInput_${userId}" placeholder="New Password" 
+                style="flex:1; min-width:140px; padding:8px 12px; border:1px solid rgba(46,204,113,0.3); border-radius:8px; font-size:13px; outline:none; background:rgba(255,255,255,0.9);">
+            <input type="password" id="confirmPassInput_${userId}" placeholder="Confirm Password"
+                style="flex:1; min-width:140px; padding:8px 12px; border:1px solid rgba(46,204,113,0.3); border-radius:8px; font-size:13px; outline:none; background:rgba(255,255,255,0.9);">
+        </div>
+        <div id="passFormError_${userId}" style="color:#e74c3c; font-size:11px; font-weight:600; display:none;"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button onclick="document.getElementById('pass-form-${userId}').remove()" 
+                style="padding:7px 16px; border:1px solid #ddd; border-radius:8px; background:transparent; cursor:pointer; font-size:12px; color:#666;">Cancel</button>
+            <button onclick="confirmPasswordChange('${userId}', '${username}')"
+                style="padding:7px 18px; border:none; border-radius:8px; background:linear-gradient(135deg,#2e7d32,#27ae60); color:white; font-weight:700; cursor:pointer; font-size:12px; box-shadow:0 2px 8px rgba(46,125,50,0.3);">
+                ✅ Update Password
+            </button>
+        </div>
+    `;
+
+    userRow.insertAdjacentElement('afterend', formDiv);
+    document.getElementById(`newPassInput_${userId}`).focus();
+}
+
+async function confirmPasswordChange(userId, username) {
+    const newPass = document.getElementById(`newPassInput_${userId}`).value.trim();
+    const confirmPass = document.getElementById(`confirmPassInput_${userId}`).value.trim();
+    const errEl = document.getElementById(`passFormError_${userId}`);
+
+    // Validation
+    if (newPass.length < 3) {
+        errEl.textContent = '⚠️ Password must be at least 3 characters';
+        errEl.style.display = 'block'; return;
+    }
+    if (newPass !== confirmPass) {
+        errEl.textContent = '❌ Passwords do not match — please try again';
+        errEl.style.display = 'block';
+        document.getElementById(`confirmPassInput_${userId}`).style.borderColor = '#e74c3c';
+        return;
+    }
+
+    formDiv.onclick = (e) => e.stopPropagation();
+
+    try {
+        await db.collection('users').doc(userId).update({ password: newPass, forceLogout: true });
+        // Update visible input live
+        const inp = document.getElementById('pass_' + userId);
+        if (inp) inp.value = newPass;
+        // Close the form
+        const form = document.getElementById(`pass-form-${userId}`);
+        if (form) form.remove();
+        showToast(`✅ Password updated for "${username}"`, 'success');
+    } catch (e) {
+        console.error(e);
+        errEl.textContent = '❌ Failed to update: ' + e.message;
+        errEl.style.display = 'block';
+    }
+}
+
 async function createNewUser() {
     const username = document.getElementById('newUserName').value.trim();
     const pass = document.getElementById('newUserPass').value.trim();
-    const role = document.getElementById('newUserRole').value;
+    const role = 'agent';
 
     if (!username || !pass) return showToast("Username and Password required", "error");
 
@@ -3597,10 +5310,16 @@ async function deleteDocUser(id, username) {
         return;
     }
 
-    // Protection for Primary Admin
+    // T8: Protection for Primary Admin and ALL admin accounts
     const protectedNames = ['primary_admin'];
     if (protectedNames.includes(username.toLowerCase())) {
         return showToast("Cannot delete the Primary Admin account!", "error");
+    }
+
+    // T8: Block deletion of any user with role='admin'
+    const userDoc = window.allUsersCache ? window.allUsersCache.find(u => u.id === id) : null;
+    if (userDoc && userDoc.role === 'admin') {
+        return showToast("Cannot delete an Admin account. Demote the user first.", "error");
     }
 
     if (confirm(`Are you sure you want to delete user "${username}"?`)) {
@@ -3621,7 +5340,16 @@ function renderStickyBanners() {
 
     // بنجيب أحدث ميل بس الأول نتأكد إنه المفروض يظهر أصلا (عشان نستثني الـ Scheduled)
     const visibleNow = getVisibleMails();
-    const stickyMails = visibleNow.filter(m => m.isSticky);
+    let agentConfirmedVersions = JSON.parse(localStorage.getItem('agentConfirmedVersions') || '{}');
+
+    // ✅ FIX #5: Don't show sticky banner if agent already confirmed reading it
+    const stickyMails = visibleNow.filter(m => {
+        if (!m.isSticky) return false;
+        if (!m.requireReadReceipt) return true; // Keep sticky if it doesn't require confirmation
+        const mailVer = m.lastUpdatedAt || m.createdAt?.seconds || "v1";
+        return agentConfirmedVersions[m.id] !== mailVer; // Only show if NOT confirmed
+    });
+
     if (stickyMails.length === 0) {
         bannerContainer.style.display = 'none';
         return;
@@ -3894,10 +5622,5 @@ function closeWatermarkMenu() {
     if (menu) menu.classList.remove('show');
     if (icon) icon.classList.remove('rotate');
 }
-// ─── Close watermark menu helper ─────────────────────────────────
-function closeWatermarkMenu() {
-    const menu = document.getElementById('watermarkMenu');
-    const icon = document.querySelector('.watermark-icon');
-    if (menu) menu.classList.remove('show');
-    if (icon) icon.classList.remove('rotate');
-}
+// ✅ FIX: removed duplicate closeWatermarkMenu definition (was defined twice)
+

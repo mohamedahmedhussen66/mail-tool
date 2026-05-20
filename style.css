@@ -49,24 +49,23 @@ html {
 
 .search-box {
     position: relative;
-    width: 90%;
-    max-width: 600px;
-    /* جعل بار السيرش أعرض */
-    margin: 20px auto;
+    width: 100%;
+    max-width: 340px; /* Match title width */
+    margin: 8px 0 25px 0; /* Keep it left-aligned with the title */
+    z-index: 50; /* Lower z-index so it doesn't overlap login screen */
 }
 
 .search-box input {
     width: 100%;
-    padding: 15px 50px 15px 20px;
-    /* Space for icon at right side */
-    border: 2px solid #2e7d32;
+    padding: 12px 40px; /* Equal padding so text is perfectly centered */
+    border: 1px solid rgba(46,125,50,0.4);
     border-radius: 30px;
-    font-size: 16px;
+    font-size: 14px;
     outline: none;
     background: white;
-    text-align: center;
-    /* Center text */
-    transition: 0.3s;
+    text-align: center; /* Center the search text */
+    box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+    transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .search-box input:focus {
@@ -76,69 +75,87 @@ html {
 
 .search-box .search-icon {
     position: absolute;
-    right: 20px;
+    right: 15px; /* ✅ Pushed exactly to the far right edge */
     top: 50%;
     transform: translateY(-50%);
-    font-size: 20px;
+    font-size: 18px;
     color: #2e7d32;
     pointer-events: none;
 }
 
 #searchHistoryBox {
     position: absolute;
-    top: 55px;
-    left: 10px;
-    width: calc(100% - 20px);
-    max-height: 250px;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    top: 55px; /* ✅ Disconnect from input */
+    left: 0;
+    width: 100%;
+    /* ✅ FIX #11: More compact height — only 2 items by default */
+    max-height: 200px;
+    background: rgba(255, 255, 255, 0.45); /* ✅ Highly transparent (Glassmorphism) */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(46,125,50,0.12);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     display: none;
     flex-direction: column;
-    z-index: 1000;
+    z-index: 9999999; /* T2: فوق كل شيء بما فيه الـ mail-box */
     overflow-y: auto;
     overflow-x: hidden;
-    transition: all 0.3s ease;
-    padding: 8px 0;
+    transition: all 0.25s ease;
+    padding: 6px 0;
 }
 
 #searchHistoryBox.show {
     display: flex;
-    animation: slideDownFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    animation: smoothDropFade 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform-origin: top center;
 }
 
-@keyframes slideDownFade {
+@keyframes smoothDropFade {
     0% {
         opacity: 0;
-        transform: translateY(-10px) scale(0.98);
+        transform: translateY(-10px) scaleY(0.95);
     }
-
     100% {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: translateY(0) scaleY(1);
     }
 }
 
 #searchHistoryBox div {
-    padding: 12px 20px;
+    padding: 9px 16px;
     cursor: pointer;
     background: transparent;
-    transition: all 0.2s;
-    font-size: 14px;
+    transition: all 0.18s;
+    font-size: 12.5px;
     color: #444;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    border-radius: 0;
 }
 
 #searchHistoryBox div:hover {
-    background: rgba(46, 204, 113, 0.15);
+    background: rgba(46, 204, 113, 0.12);
     color: #27ae60;
-    padding-left: 25px;
-    /* Slight indent hover effect */
+    padding-left: 22px;
+}
+
+/* ✅ FIX #11: Expand button style */
+.sh-expand-btn {
+    padding: 7px 16px !important;
+    font-size: 11px !important;
+    color: #2e7d32 !important;
+    font-weight: 600 !important;
+    border-top: 1px solid rgba(46,125,50,0.12) !important;
+    cursor: pointer !important;
+    text-align: center !important;
+    background: rgba(46,125,50,0.04) !important;
+    letter-spacing: 0.3px;
+    transition: background 0.18s;
+}
+.sh-expand-btn:hover {
+    background: rgba(46,125,50,0.12) !important;
 }
 
 /* Typo Suggestion Box */
@@ -275,7 +292,7 @@ th .resizer {
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 12px 18px 10px;
+    padding: 8px 14px 6px;
     border-bottom: 1px solid rgba(46, 125, 50, 0.12);
     background: linear-gradient(135deg, rgba(46,125,50,0.06) 0%, rgba(255,255,255,0) 100%);
     border-radius: 18px 18px 0 0;
@@ -369,12 +386,13 @@ th .resizer {
 
 /* === Mail Box Footer === */
 .mail-box-footer {
-    padding: 10px 18px;
+    padding: 18px 22px; /* Increased vertical padding */
+    min-height: 64px; /* Ensure badges have room */
     border-top: 1px solid rgba(46, 125, 50, 0.1);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
     background: rgba(248, 255, 248, 0.6);
     border-radius: 0 0 18px 18px;
@@ -390,18 +408,24 @@ th .resizer {
     color: #7f8c8d;
 }
 
-.mail-box-footer-author .author-avatar {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #2e7d32, #27ae60);
-    color: white;
-    font-size: 11px;
-    font-weight: 700;
-    display: flex;
+/* ✅ FIX #3: Timestamp bubble replacing 'Published by Admin' */
+.mail-time-bubble {
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    gap: 5px;
+    background: rgba(46,125,50,0.08);
+    border: 1px solid rgba(46,125,50,0.15);
+    color: #2e7d32;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+.mail-time-bubble:hover {
+    background: rgba(46,125,50,0.14);
 }
 
 /* === Skeleton Loader with HDB green identity === */
@@ -590,6 +614,11 @@ body.dark-mode .mail-box-fade-bottom {
 
 .mail-box-scroll-arrow.hidden { opacity: 0; pointer-events: none; }
 
+/* T7: Dark Mode — scroll arrow */
+body.dark-mode .mail-box-scroll-arrow {
+    color: rgba(46,204,113,0.55);
+}
+
 @keyframes arrowBounce {
     0%, 100% { transform: translateX(-50%) translateY(0); }
     50% { transform: translateX(-50%) translateY(5px); }
@@ -650,6 +679,16 @@ body.dark-mode .mail-box-fade-bottom {
 }
 
 .agent-priority-star.active { color: #f39c12; }
+
+/* T7: Dark Mode — priority star */
+body.dark-mode .agent-priority-star {
+    opacity: 0.4;
+    color: rgba(255,255,255,0.5);
+}
+body.dark-mode .agent-priority-star.active {
+    color: #f39c12;
+    opacity: 1;
+}
 
 /* === Font Size Controls === */
 .font-size-ctrl {
@@ -724,6 +763,18 @@ tr.unread-row td {
     );
     background-size: 200% auto;
     animation: titleShimmer 2.8s linear infinite;
+}
+
+/* T7: Dark Mode — unread-row shimmer correction */
+body.dark-mode tr.unread-row td {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(46,204,113,0.09) 45%,
+        transparent 90%
+    );
+    background-size: 200% auto;
+    animation: titleShimmer 2.8s linear infinite;
+    color: #c8e6c9 !important;
 }
 
 /* === Peek Preview Tooltip === */
@@ -871,7 +922,8 @@ body.side-panel-open #tableContentArea {
     box-shadow: -4px 0 24px rgba(46,125,50,0.08), 0 8px 32px rgba(0,0,0,0.08) !important;
     display: flex !important;
     flex-direction: column !important;
-    overflow: hidden !important;
+    /* ✅ FIX #14c: Changed overflow:hidden to visible to allow inner scroll */
+    overflow: visible !important;
     align-self: stretch !important;
     animation: sidePanelReveal 0.38s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -895,11 +947,40 @@ body.dark-mode .mail-box.side-panel {
     border-left-color: rgba(46,204,113,0.35) !important;
 }
 
-/* Mail body fills panel height */
+/* Mail body fills panel height — FIX #14c */
+.mail-box.side-panel .mail-box-body-wrap {
+    flex: 1 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    min-height: 0 !important;
+}
+
 .mail-box.side-panel .mail-box-body {
     flex: 1 !important;
-    max-height: none !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
+    max-height: none !important;
+    scroll-behavior: smooth;
+    /* Edge-friendly scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(46,125,50,0.3) transparent;
+}
+
+.mail-box.side-panel .mail-box-body::-webkit-scrollbar {
+    width: 5px;
+}
+.mail-box.side-panel .mail-box-body::-webkit-scrollbar-thumb {
+    background: rgba(46,125,50,0.3);
+    border-radius: 4px;
+}
+
+/* ✅ FIX #14b: Side panel toggle button active state */
+.mail-box-minimize-btn.sp-active {
+    background: rgba(46,125,50,0.18) !important;
+    color: #27ae60 !important;
+    border: 1px solid rgba(46,125,50,0.35) !important;
 }
 
 /* Keep the normal mail box outside flow when not in side-panel mode */
@@ -989,8 +1070,9 @@ table {
     margin-top: 20px;
     position: relative;
     z-index: 1;
-    background: rgba(255, 255, 255, 0.6) !important;
-    /* Glassmorphism transparency */
+    background: rgba(255, 255, 255, 0.12) !important; /* T4: خفض الشفافية من 0.45→0.12 ليظهر الـ watermark */
+    /* T4: إزالة backdrop-filter من الجدول — يعيق رؤية الـ watermark */
+    /* Glassmorphism transparency — T4 */
 }
 
 td,
@@ -1000,16 +1082,79 @@ th {
     text-align: center;
 }
 
+/* T3: Improved preview row — better readability */
 .preview td {
-    background: #f1f8e9;
-    text-align: right;
-    direction: rtl;
+    background: rgba(241,248,233,0.7);
+    text-align: left;
+    direction: ltr;
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 12px 20px;
-    color: #2c3e50;
-    line-height: 1.6;
+    font-size: 15px;       /* T3: كبّرنا من 13px */
+    font-weight: 500;      /* T3: bold أخف للوضوح */
+    padding: 6px 20px 8px 20px;
+    color: #2c3e50;        /* T3: لون أغمق وأوضح */
+    line-height: 1.85;     /* T3: مسافة أكبر بين الأسطر */
+    border-top: none;
+    font-style: normal;
+    letter-spacing: 0.1px; /* T3: وضوح حروف */
+}
+
+/* T11: Premium Category Badge redesign */
+.category-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 11px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    vertical-align: middle;
+    background: linear-gradient(135deg, rgba(41,128,185,0.15), rgba(41,128,185,0.07));
+    color: #2980b9;
+    border-color: rgba(41,128,185,0.28);
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    box-shadow: 0 1px 4px rgba(41,128,185,0.12);
+}
+
+.category-badge.custom-cat {
+    background: linear-gradient(135deg, rgba(142,68,173,0.15), rgba(142,68,173,0.07));
+    color: #8e44ad;
+    border-color: rgba(142,68,173,0.28);
+    box-shadow: 0 1px 4px rgba(142,68,173,0.12);
+}
+
+/* T11: Urgent badge premium */
+.urgent-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 11px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    background: linear-gradient(135deg, rgba(231,76,60,0.18), rgba(231,76,60,0.08));
+    color: #c0392b;
+    border: 1px solid rgba(231,76,60,0.32);
+    white-space: nowrap;
+    vertical-align: middle;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    box-shadow: 0 1px 4px rgba(231,76,60,0.15);
+}
+
+.urgent-badge.blink-subtle {
+    animation: urgentPulse 2s ease-in-out infinite;
+}
+
+@keyframes urgentPulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(231,76,60,0.15); }
+    50% { opacity: 0.85; box-shadow: 0 0 0 3px rgba(231,76,60,0.15); }
 }
 
 .selected {
@@ -1041,6 +1186,28 @@ table {
     /* Red indicator for new mails */
 }
 
+
+/* M3: Table rows transparent — watermark shows through */
+#tableBody tr:not(.preview) {
+    background: transparent !important;
+}
+
+/* M5: Dark mode rows */
+body.dark-mode #tableBody tr:not(.preview) {
+    background: transparent !important;
+}
+
+/* M5: Dark mode hover — green tinted instead of white */
+body.dark-mode #tableBody tr:not(.preview):hover,
+body.dark-mode #tableBody tr:not(.preview):hover+tr.preview,
+body.dark-mode #tableBody tr.preview:hover,
+body.dark-mode #tableBody tr:has(+ tr.preview:hover) {
+    background-color: rgba(30, 50, 30, 0.96) !important;
+    box-shadow: 0 12px 24px -10px rgba(0,0,0,0.3), 0 0 0 1px rgba(46,204,113,0.15) !important;
+}
+body.dark-mode #tableBody tr:not(.preview):hover td {
+    color: #c8e6c9 !important;
+}
 
 /* 3. الأكشن العملاق (الميل + البريفيو ككتلة واحدة مرتفعة) */
 #tableBody tr:not(.preview):hover,
@@ -1126,9 +1293,11 @@ table {
     margin-left: 3px;
 }
 
-/* Dark Mode */
+/* ======================= */
+/* T7: Dark Mode — Overhaul */
+/* ======================= */
 body.dark-mode {
-    background: #121212;
+    background: #0e150e;
     color: #e0e0e0;
 }
 
@@ -1136,33 +1305,188 @@ body.dark-mode .mail-box,
 body.dark-mode .dropdown-content,
 body.dark-mode .search-box input,
 body.dark-mode #searchHistoryBox {
-    background: #1e1e1e;
-    color: white;
-    border-color: #4caf50;
+    background: #1a2a1a;
+    color: #e0e0e0;
+    border-color: rgba(46,204,113,0.25);
+}
+
+body.dark-mode table {
+    background: rgba(18, 28, 18, 0.45) !important;
+}
+
+body.dark-mode #tableBody tr {
+    background: transparent !important;
+    color: #d5e8d5;
 }
 
 body.dark-mode td,
 body.dark-mode th {
-    border-color: #333;
+    border-color: #1e2e1e;
 }
 
 body.dark-mode .preview td {
-    background: #1b261b;
-    color: #ccc;
+    background: rgba(20,32,20,0.7);
+    color: #78909c;
 }
 
 body.dark-mode tbody:hover tr {
-    background: #2e3d2e;
-    color: #fff;
+    background: transparent;
+    color: #e0e0e0;
 }
 
 body.dark-mode .selected {
     background: #1b5e20 !important;
 }
 
+/* Dark: admin panel / modals */
+body.dark-mode .admin-content {
+    background: #1a2a1a !important;
+    color: #e0e0e0;
+}
+body.dark-mode .admin-content input,
+body.dark-mode .admin-content select,
+body.dark-mode .admin-content textarea {
+    background: #0e1a0e;
+    color: #e0e0e0;
+    border-color: rgba(46,204,113,0.2);
+}
+body.dark-mode .admin-header h3 {
+    color: #2ecc71;
+}
+
+/* Dark: glass-modal (manage users, options) */
+body.dark-mode .glass-modal,
+body.dark-mode #manageOptionsModal > div {
+    background: #1a2a1a !important;
+    color: #e0e0e0;
+    border-color: rgba(46,204,113,0.15);
+}
+body.dark-mode #manageOptionsModal > div h3,
+body.dark-mode .glass-modal h3 {
+    color: #2ecc71;
+}
+body.dark-mode #newOptionInput,
+body.dark-mode #newUserName,
+body.dark-mode #newUserPass,
+body.dark-mode #newUserRole,
+body.dark-mode #userSearchInput {
+    background: #0e1a0e !important;
+    color: #e0e0e0 !important;
+    border-color: rgba(46,204,113,0.2) !important;
+}
+body.dark-mode #optionsList,
+body.dark-mode #usersListArea {
+    background: rgba(0,0,0,0.3) !important;
+    border-color: rgba(46,204,113,0.1) !important;
+}
+body.dark-mode #optionsList > div,
+body.dark-mode .user-row-admin {
+    border-bottom-color: rgba(46,204,113,0.1) !important;
+    color: #d5e8d5;
+}
+
+/* Dark: toast */
+body.dark-mode .toast-card {
+    background: rgba(20, 32, 20, 0.92) !important;
+    border-color: rgba(46,204,113,0.2);
+    color: #2ecc71;
+}
+
+/* Dark: action buttons in rowHoverBar */
+body.dark-mode .action-btn {
+    background: rgba(30, 45, 30, 0.95);
+    border-color: rgba(46,204,113,0.15);
+    color: #d5e8d5;
+}
+body.dark-mode .action-btn:hover {
+    background: rgba(46,204,113,0.15);
+    border-color: rgba(46,204,113,0.35);
+    color: #2ecc71;
+}
+
+/* T7: tagSuggestionsBox light mode — compensate for removed inline background:white */
+#tagSuggestionsBox {
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* Dark: tag suggestions */
+body.dark-mode #tagSuggestionsBox {
+    background: #1a2a1a !important;
+    border-color: rgba(46,204,113,0.2);
+}
+body.dark-mode #tagSuggestionsBox > div {
+    color: #2ecc71;
+    border-bottom-color: rgba(46,204,113,0.1);
+}
+
+/* T7: Dark Mode — activeFiltersBar */
+body.dark-mode #activeFiltersBar {
+    background: transparent;
+}
+body.dark-mode #activeFiltersBar span {
+    color: #c8e6c9;
+}
+
+/* Dark: custom confirm modal */
+body.dark-mode #custom-confirm-modal .modal-content {
+    background: #1a2a1a;
+    color: #e0e0e0;
+}
+body.dark-mode #custom-confirm-modal h3 {
+    color: #e0e0e0;
+}
+body.dark-mode #custom-confirm-modal p {
+    color: #a0b5a0;
+}
+
+/* Dark: dropdown content items */
+body.dark-mode .menu-items div {
+    color: #2ecc71;
+}
+body.dark-mode .menu-items div:hover {
+    background: rgba(46,204,113,0.1);
+}
+body.dark-mode .menu-item-option {
+    color: #d5e8d5;
+}
+body.dark-mode .menu-item-option:hover,
+body.dark-mode .menu-item-option.active {
+    background: rgba(46,204,113,0.12);
+    color: #2ecc71;
+}
+
 body.dark-mode #searchHistoryBox div {
     border-bottom-color: #333;
     color: #eee;
+}
+
+/* Dark mode: timestamp bubble */
+body.dark-mode .mail-time-bubble {
+    background: rgba(46,204,113,0.1);
+    border-color: rgba(46,204,113,0.2);
+    color: #2ecc71;
+}
+
+/* Dark mode: category badges */
+body.dark-mode .category-badge {
+    background: linear-gradient(135deg, rgba(41,128,185,0.2), rgba(41,128,185,0.1));
+    color: #5dade2;
+    border-color: rgba(41,128,185,0.35);
+    box-shadow: 0 1px 4px rgba(41,128,185,0.15);
+}
+body.dark-mode .urgent-badge {
+    background: linear-gradient(135deg, rgba(231,76,60,0.22), rgba(231,76,60,0.1));
+    color: #ec7063;
+    border-color: rgba(231,76,60,0.35);
+    box-shadow: 0 1px 4px rgba(231,76,60,0.15);
+}
+body.dark-mode .category-badge.custom-cat {
+    background: linear-gradient(135deg, rgba(142,68,173,0.2), rgba(142,68,173,0.1));
+    color: #bb8fce;
+    border-color: rgba(142,68,173,0.35);
+    box-shadow: 0 1px 4px rgba(142,68,173,0.15);
 }
 
 .dark-toggle {
@@ -1176,16 +1500,14 @@ body.dark-mode #searchHistoryBox div {
 
 
 .watermark-button-container {
-    position: fixed;
+    position: fixed !important;
     top: 40px;
-    /* Lowered */
     right: 40px;
-    /* Padded from edge */
     z-index: 5000;
-
     display: flex;
     align-items: center;
     isolation: isolate;
+    will-change: auto;
 }
 
 .watermark-button-container::before {
@@ -1342,23 +1664,6 @@ body.dark-mode #searchHistoryBox div {
     opacity: 0.8;
 }
 
-.unread-badge {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    background: #e74c3c;
-    color: white;
-    font-size: 11px;
-    font-weight: bold;
-    padding: 2px 6px;
-    border-radius: 10px;
-    border: 2px solid white;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    display: none;
-    /* Auto-shown by JS */
-    z-index: 10;
-}
-
 #stickyBannersContainer {
     position: absolute;
     bottom: 5px;
@@ -1389,6 +1694,14 @@ body.dark-mode #searchHistoryBox div {
     /* تقليل المسافات الجانبية للموبايل */
     gap: 5px;
     /* مسافة صغيرة جداً بين العناصر */
+}
+
+/* T7: Dark Mode — responsive header */
+body.dark-mode .responsive-header {
+    background: transparent;
+}
+body.dark-mode .main-title {
+    color: #c8e6c9;
 }
 
 /* 2. اللوجو - تحكم كامل */
@@ -2689,4 +3002,359 @@ body.dark-mode #rowHoverBar {
 .btn-perm-delete:hover {
     transform: scale(1.12) !important;
     background: linear-gradient(135deg, #922b21, #c0392b) !important;
+}
+
+/* ============================================================
+   ⭐ JODIT EDITOR — Outlook-like Bilingual (RTL/LTR) CSS Fix
+   ============================================================ */
+
+/* 1. The core bidi fix — scoped ONLY to the editor content area */
+.jodit-wysiwyg {
+    unicode-bidi: plaintext !important;
+    font-family: 'Cairo', 'Poppins', Arial, sans-serif !important;
+    font-size: 15px !important;
+    line-height: 1.9 !important;
+}
+
+/* 2. Every block element picks its own direction from content */
+.jodit-wysiwyg p,
+.jodit-wysiwyg div,
+.jodit-wysiwyg li,
+.jodit-wysiwyg h1,
+.jodit-wysiwyg h2,
+.jodit-wysiwyg h3,
+.jodit-wysiwyg h4,
+.jodit-wysiwyg h5,
+.jodit-wysiwyg h6,
+.jodit-wysiwyg blockquote,
+.jodit-wysiwyg td,
+.jodit-wysiwyg th,
+.jodit-wysiwyg dt,
+.jodit-wysiwyg dd {
+    unicode-bidi: plaintext !important;
+}
+
+/* 3. RTL paragraph: text right-aligned */
+.jodit-wysiwyg [dir="rtl"] {
+    text-align: right;
+}
+
+/* 4. LTR paragraph: text left-aligned */
+.jodit-wysiwyg [dir="ltr"] {
+    text-align: left;
+}
+
+/* 5. Arabic Quotes styling */
+.jodit-wysiwyg [dir="rtl"]::before { content: ''; }
+
+/* 6. Bidi Warning — flipped paragraph highlight */
+.jodit-wysiwyg .bidi-warn {
+    outline: 2px dashed #f39c12 !important;
+    background: rgba(243, 156, 18, 0.05) !important;
+}
+
+/* 7. RTL-aware lists — bullets on the right */
+.jodit-wysiwyg [dir="rtl"] ul,
+.jodit-wysiwyg [dir="rtl"] ol {
+    padding-right: 20px;
+    padding-left: 0;
+}
+
+/* 8. RTL-aware blockquote — border on right side */
+.jodit-wysiwyg [dir="rtl"] blockquote {
+    border-right: 4px solid #27ae60;
+    border-left: none;
+    padding-right: 16px;
+    padding-left: 0;
+    margin-right: 0;
+}
+
+/* 9. Jodit toolbar styling improvements */
+.jodit-toolbar__box {
+    flex-wrap: wrap !important;
+}
+
+.jodit-toolbar-button__button {
+    min-width: 32px !important;
+}
+
+/* 10. Dark mode support for editor */
+body.dark-mode .jodit-container,
+body.dark-mode .jodit-workplace,
+body.dark-mode .jodit-wysiwyg {
+    background: #1a2a1a !important;
+    color: #e0f2e0 !important;
+}
+
+body.dark-mode .jodit-toolbar__box {
+    background: #0f1f0f !important;
+    border-color: rgba(46, 204, 113, 0.2) !important;
+}
+
+body.dark-mode .jodit-toolbar-button__button {
+    color: #c8e6c9 !important;
+}
+
+body.dark-mode .jodit-toolbar-button__button:hover {
+    background: rgba(46, 204, 113, 0.15) !important;
+}
+
+/* 11. Direction Status Bar styling */
+#dirStatusIndicator {
+    font-size: 12px;
+    font-weight: bold;
+    transition: color 0.25s ease;
+    letter-spacing: 0.3px;
+}
+
+
+/* ============================================================
+   🔍 Focus Mode — Fullscreen Editor Experience
+   ============================================================ */
+body.hdb-focus-overlay::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 99990;
+    animation: focusFadeIn 0.3s ease;
+}
+
+@keyframes focusFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.jodit-container.hdb-focus-mode {
+    position: fixed !important;
+    top: 3vh !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 88vw !important;
+    max-width: 1100px !important;
+    height: 94vh !important;
+    z-index: 99999 !important;
+    border-radius: 16px !important;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5) !important;
+    animation: focusSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes focusSlideIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.jodit-container.hdb-focus-mode .jodit-workplace {
+    height: calc(94vh - 90px) !important;
+}
+
+.jodit-container.hdb-focus-mode .jodit-wysiwyg {
+    height: 100% !important;
+    font-size: 16px !important;
+    line-height: 2 !important;
+}
+
+body.dark-mode .jodit-container.hdb-focus-mode {
+    background: #0f1f0f !important;
+    border-color: rgba(46, 204, 113, 0.3) !important;
+}
+
+/* ============================================================
+   🖼️  Image Controls — Toolbar & Grid
+   ============================================================ */
+
+/* Image hover highlight in editor */
+.jodit-wysiwyg img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    transition: outline 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+}
+
+.jodit-wysiwyg img:hover {
+    outline: 2px solid rgba(46, 125, 50, 0.5);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* Image grid containers */
+.jodit-wysiwyg div[style*="display:flex"] img,
+.jodit-wysiwyg div[style*="display: flex"] img {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+/* Image toolbar button hover */
+#hdb-img-toolbar button:hover {
+    background: rgba(46, 204, 113, 0.25) !important;
+}
+
+/* Image caption */
+.jodit-wysiwyg figcaption {
+    font-size: 12px;
+    color: #7f8c8d;
+    text-align: center;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+/* Image float cleared after section */
+.jodit-wysiwyg .img-clear {
+    clear: both;
+    display: block;
+}
+
+/* ============================================================ */
+/* T13: Premium Inline Row Action Icons                          */
+/* ============================================================ */
+.row-inline-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    transform: translateX(6px);
+    vertical-align: middle;
+    float: right;
+    margin-top: 2px;
+}
+#tableBody tr:hover .row-inline-actions {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(0);
+}
+.row-action-icon {
+    width: 44px;
+    height: 32px;
+    border-radius: 6px; /* Rectangular as requested */
+    border: 1px solid rgba(46,125,50,0.18);
+    background: rgba(255,255,255,0.92);
+    color: #555;
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.18s ease;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    flex-shrink: 0;
+}
+.row-action-icon:hover {
+    background: #2e7d32;
+    color: white;
+    border-color: #2e7d32;
+    transform: scale(1.10);
+    box-shadow: 0 3px 10px rgba(46,125,50,0.3);
+}
+.row-action-icon.danger:hover {
+    background: #e74c3c;
+    border-color: #e74c3c;
+    box-shadow: 0 3px 10px rgba(231,76,60,0.3);
+}
+.row-action-icon.active {
+    background: rgba(243,156,18,0.12);
+    border-color: rgba(243,156,18,0.4);
+    color: #f39c12;
+}
+body.dark-mode .row-action-icon {
+    background: rgba(26,42,26,0.95);
+    border-color: rgba(46,204,113,0.2);
+    color: #d5e8d5;
+}
+
+/* T14: Side panel compact */
+body.side-panel-open #table th, body.side-panel-open #table td { padding-left:8px; padding-right:8px; font-size:12px; }
+body.side-panel-open .category-badge, body.side-panel-open .urgent-badge { font-size:10px; padding:3px 7px; }
+body.side-panel-open .row-inline-actions { gap: 2px; }
+
+/* 📱
+   T14: FULL RESPONSIVE DESIGN - Mobile / Tablet / Projector
+   📱 */
+
+/* 📱 ➡️ Mobile (< 600px) 📱 */
+@media screen and (max-width: 600px) {
+    .responsive-header { padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
+    .main-title { font-size: 18px !important; }
+    .search-box { width: 95% !important; margin: 6px auto; }
+    .search-input { font-size: 13px; padding: 8px 12px; }
+    #tableContentArea { overflow-x: auto; }
+    #table { min-width: 600px; font-size: 11px; }
+    th, td { padding: 5px 6px !important; font-size: 11px; }
+    .category-badge, .urgent-badge { font-size: 9px; padding: 2px 6px; }
+    .mail-box { width: 100% !important; min-width: unset !important; }
+    .mail-box-header { flex-direction: column; gap: 6px; padding: 8px 10px; }
+    .watermark-button-container { top: 10px; right: 12px; }
+    .watermark-icon { width: 42px !important; height: 42px !important; }
+    #watermarkMenu { right: -10px; width: 200px; }
+    .row-inline-actions { display: none; } /* hide on mobile - touch tap opens mail */
+    #pageLayoutArea { flex-direction: column !important; }
+    #sidePanel { width: 100% !important; min-width: unset !important; }
+    .admin-content { padding: 10px; }
+}
+
+/* 📱 ➡️ Tablet (601px - 900px) 📱 */
+@media screen and (min-width: 601px) and (max-width: 900px) {
+    .main-title { font-size: 22px !important; }
+    .search-box { width: 85% !important; }
+    #table { font-size: 12px; }
+    th, td { padding: 6px 8px !important; }
+    .mail-box { min-width: 300px !important; max-width: 50vw !important; }
+    .watermark-button-container { top: 20px; right: 20px; }
+    .watermark-icon { width: 48px !important; height: 48px !important; }
+    .row-inline-actions button, .row-action-icon { width: 26px; height: 26px; font-size: 11px; }
+    #pageLayoutArea { flex-wrap: wrap; }
+}
+
+/* 💻 ➡️ Laptop (901px - 1400px) - base design 💻 */
+@media screen and (min-width: 901px) and (max-width: 1400px) {
+    /* Current design = base, no overrides needed */
+}
+
+/* 🖥️ ➡️ Large Desktop / TV (> 1400px) 🖥️ */
+@media screen and (min-width: 1401px) {
+    body { font-size: 15px; }
+    .main-title { font-size: 28px !important; }
+    #table { font-size: 14px; }
+    th, td { padding: 10px 14px; }
+    .category-badge, .urgent-badge { font-size: 13px; padding: 5px 14px; }
+    .mail-box { min-width: 480px; }
+    .search-input { font-size: 15px; }
+    .watermark-icon { width: 62px !important; height: 62px !important; }
+}
+
+/* 📽️ ➡️ Projector / Presentation (> 1920px or print-like) 📽️ */
+@media screen and (min-width: 1921px) {
+    body { font-size: 16px; }
+    .main-title { font-size: 36px !important; letter-spacing: 1px; }
+    #table { font-size: 16px; }
+    th { font-size: 15px; padding: 14px 18px; }
+    td { font-size: 14px; padding: 12px 16px; }
+    .category-badge, .urgent-badge { font-size: 14px; padding: 6px 16px; border-radius: 22px; }
+    .mail-box { min-width: 560px; font-size: 15px; line-height: 1.9; }
+    .mail-time-bubble { font-size: 13px; padding: 5px 14px; }
+    .preview td { font-size: 16px !important; line-height: 2; }
+    .watermark-icon { width: 72px !important; height: 72px !important; }
+    .search-input { font-size: 17px; padding: 12px 20px; }
+    /* Higher contrast for projector */
+    td, th { border-color: rgba(46,125,50,0.35) !important; }
+    .category-badge { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+}
+
+/* 🖨️ ➡️ Print / PDF export 🖨️ */
+@media print {
+    .watermark-button-container, #globalAnnouncementBar,
+    .row-inline-actions, .mail-box-actions, .admin-content,
+    .responsive-header .search-box { display: none !important; }
+    body { background: white !important; color: black !important; }
+    table { box-shadow: none !important; border: 1px solid #ccc; }
+    .mail-box { box-shadow: none !important; border: 1px solid #ccc !important; }
+}
+
+/* T5: Dark Mode Mail Content Text Color */
+body.dark-mode #mailBoxContent,
+body.dark-mode #mailBoxContent * {
+    color: #e0e0e0 !important;
 }
