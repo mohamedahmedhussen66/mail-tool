@@ -140,13 +140,14 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(dashboardUpdateTimeout);
         dashboardUpdateTimeout = setTimeout(() => {
             try { calculateKPIs(); } catch (e) { console.warn('KPI error:', e); }
+            try { animateCounters(); } catch (e) { }  // ✅ FIX: animate KPI counters after real data loads
             try { updatePulseChart(); } catch (e) { }
             if (allAgentsList.length > 0) { try { renderAgentCards(); } catch (e) { } }
             try { updateMailIntelligence(); } catch (e) { }
             try { updateAdminCore(); } catch (e) { }
             // New 15 features
             if (window._extendedUpdate) try { window._extendedUpdate(); } catch (e) { }
-        }, 5000);
+        }, 2000);  // ✅ FIX: reduced from 5000ms to 2000ms for faster updates
     }, (err) => {
         console.error('Mails listener error:', err);
         hideLoader(); // Even on error, hide the loader
@@ -271,22 +272,22 @@ function calculateKPIs(filter = 'all') {
 
     // Update DOM (Total Mails)
     document.querySelector('.kpi-card:nth-child(1) .counter').setAttribute('data-target', published.length);
-    document.querySelector('.kpi-card:nth-child(1) .flip-card-back').innerHTML = `
-        <h4 data-i18n="breakdown">Breakdown</h4>
-        <p>Urgent: ${urgentCount}</p>
-        <p>Updates: ${updateCount}</p>
-        <p>Policies: ${policyCount}</p>
-    `;
+    // ✅ FIX: update the dynamic breakdown spans (no more hardcoded numbers in HTML)
+    const backUrgent = document.getElementById('backUrgentCount');
+    const backUpdate = document.getElementById('backUpdateCount');
+    const backPolicy = document.getElementById('backPolicyCount');
+    if (backUrgent) backUrgent.innerText = urgentCount;
+    if (backUpdate) backUpdate.innerText = updateCount;
+    if (backPolicy) backPolicy.innerText = policyCount;
 
     // Update DOM (Read Rate)
     document.querySelector('.kpi-card:nth-child(2) .counter').setAttribute('data-target', readRate);
-    document.querySelector('.kpi-card:nth-child(2) .flip-card-back').innerHTML = `
-        <h4 data-i18n="details">Details</h4>
-        <p>Missing Reads: <span style="color:var(--danger)">${unreadGlobal}</span></p>
-    `;
+    // ✅ FIX: update the dynamic unreadGlobalVal span
+    const unreadValEl = document.getElementById('unreadGlobalVal');
+    if (unreadValEl) unreadValEl.innerText = unreadGlobal;
 
     // Update DOM (Active Now)
-    document.querySelector('.kpi-card:nth-child(3) .counter').setAttribute('data-target', activeNow || 1);
+    document.querySelector('.kpi-card:nth-child(3) .counter').setAttribute('data-target', activeNow); // ✅ FIX: removed || 1 fallback, should show 0 when no agents online
 
     // ---- ADVANCED ANALYTICS ----
 
@@ -379,11 +380,12 @@ function calculateKPIs(filter = 'all') {
     // Already computed in heatmap — get it from hourCounts via global or re-compute
     // (will be updated in updateMailIntelligence when heatmap data is ready)
 
-    // 5. Dead Mails alert (>7 days old, <30% read rate)
+    // 5. Dead Mails alert (>7 days old, <30% read rate, requires read receipt)
     const deadMailsAlertEl = document.getElementById('deadMailsAlert');
     if (deadMailsAlertEl) {
         const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         const deadMails = published.filter(m => {
+            if (!m.requireReadReceipt) return false; // ✅ FIX: only check mails that require confirmation
             const pubDate = m.publishAt ? new Date(m.publishAt) : (m.createdAt ? m.createdAt.toDate() : null);
             if (!pubDate || pubDate > sevenDaysAgo) return false;
             const reads = m.readConfirmations ? m.readConfirmations.length : 0;
@@ -569,13 +571,14 @@ function renderAgentCards(searchTerm = '') {
     const _7DaysAgo = new Date();
     _7DaysAgo.setDate(now.getDate() - 7);
 
-    // Calculate stats per agent
+    // Calculate stats per agent — ✅ FIX: use only valid published mails (not drafts/deleted)
+    const validPublishedMails = allMails.filter(m => !m.isDeleted && !m.isDraft && (!m.publishAt || m.publishAt <= new Date().toISOString()));
     const agentData = allAgentsList.map(agent => {
         const username = agent.username || 'Unknown';
         let readsMails = 0;
         let lastActive = null;
 
-        allMails.forEach(m => {
+        validPublishedMails.forEach(m => {
             if (m.readConfirmations) {
                 const conf = m.readConfirmations.find(c => c.u === username || c.username === username);
                 if (conf) {
@@ -863,25 +866,7 @@ function updateMailIntelligence() {
     }
 }
 
-function updateBestPublishHour(hourCounts) {
-    let peakHour = 0;
-    let maxReads = 0;
-    hourCounts.forEach((count, h) => {
-        if (count > maxReads) {
-            maxReads = count;
-            peakHour = h;
-        }
-    });
-    const el = document.getElementById('bestPublishHour');
-    if (el) {
-        if (maxReads === 0) el.innerText = "--";
-        else {
-            const ampm = peakHour >= 12 ? 'PM' : 'AM';
-            const h12 = peakHour % 12 || 12;
-            el.innerText = `${h12}:00 ${ampm}`;
-        }
-    }
-}
+// ✅ FIX: removed duplicate updateBestPublishHour here — canonical version kept at line ~1197
 
 // -------------------------------------------------------------
 // Admin Core Mode (Admin-specific operational intelligence)
@@ -982,12 +967,15 @@ function updateDeadSearches(logs) {
     if (!deadEl) return;
 
     const validTopics = allMails.filter(m => !m.isDeleted && !m.isDraft).map(m => (m.topic || '').toLowerCase());
+    const validKeywords = allMails.filter(m => !m.isDeleted && !m.isDraft).map(m => (m.keywords || '').toLowerCase());
 
     const deadWords = {};
     logs.forEach(log => {
-        const kw = (log.keyword || '').toLowerCase().trim();
+        // ✅ FIX: check both 'term' and 'keyword' fields for compatibility
+        const kw = (log.term || log.keyword || '').toLowerCase().trim();
         if (!kw) return;
-        const hasMatch = validTopics.some(topic => topic.includes(kw));
+        const hasMatch = validTopics.some(topic => topic.includes(kw))
+                      || validKeywords.some(keys => keys.includes(kw));
         if (!hasMatch) {
             deadWords[kw] = (deadWords[kw] || 0) + 1;
         }
@@ -1190,18 +1178,19 @@ function pingLatency() {
             }
         });
 }
-setInterval(pingLatency, 30000); // Ping every 30s
-setTimeout(pingLatency, 2000);   // Initial ping on load
+// ✅ FIX: Removed duplicate module-level ping intervals — ping is already handled inside DOMContentLoaded (every 10s via GET)
+// The GET-based ping inside DOMContentLoaded is cheaper (read vs write) and sufficient for latency display
 
 // --- Best Publish Hour (called from updateMailIntelligence) ---
+// ✅ CANONICAL definition — handles both zero and non-zero cases
 function updateBestPublishHour(hourCounts) {
     let peakHour = 0, maxVal = 0;
     hourCounts.forEach((c, h) => { if (c > maxVal) { maxVal = c; peakHour = h; } });
     const el = document.getElementById('bestPublishHour');
-    if (el && maxVal > 0) {
-        const ampm = peakHour >= 12 ? 'PM' : 'AM';
-        el.innerText = `${peakHour % 12 || 12}:00 ${ampm}`;
-    }
+    if (!el) return;
+    if (maxVal === 0) { el.innerText = '--'; return; }
+    const ampm = peakHour >= 12 ? 'PM' : 'AM';
+    el.innerText = `${peakHour % 12 || 12}:00 ${ampm}`;
 }
 
 // --- Dashboard Toast (replaces alerts) ---
@@ -1298,18 +1287,28 @@ function clearAllSearchHistory() {
 // -------------------------------------------------------------
 
 function switchTab(tabId) {
+    // ✅ FIX: Audit Log redirects to Controls (audit log lives inside controls section)
+    if (tabId === 'audit') tabId = 'controls';
+
     // Hide all sections
     document.querySelectorAll('.view-section').forEach(sec => sec.style.display = 'none');
     // Show target section
-    document.getElementById(`view-${tabId}`).style.display = 'block';
+    const targetSection = document.getElementById(`view-${tabId}`);
+    if (!targetSection) { console.warn(`Section view-${tabId} not found`); return; }
+    targetSection.style.display = 'block';
 
     // Update active class on nav
     document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
     event.currentTarget.classList.add('active');
 
     // Update Page Title
-    const titleKey = event.currentTarget.querySelector('span[data-i18n]').getAttribute('data-i18n');
-    document.getElementById('pageTitle').innerText = translations[currentLang][titleKey];
+    const titleSpan = event.currentTarget.querySelector('span[data-i18n]');
+    if (titleSpan) {
+        const titleKey = titleSpan.getAttribute('data-i18n');
+        if (translations[currentLang] && translations[currentLang][titleKey]) {
+            document.getElementById('pageTitle').innerText = translations[currentLang][titleKey];
+        }
+    }
 }
 
 function toggleTheme() {
@@ -1371,7 +1370,7 @@ function applyDateFilter() {
     const filter = document.getElementById('globalDateFilter').value;
     // Re-run all modules with the new filter
     try { calculateKPIs(filter); } catch (e) { }
-    try { animateCounters(); } catch (e) { }
+    try { animateCounters(); } catch (e) { }  // ✅ animate after filter change
     try { updatePulseChart(); } catch (e) { }
     try { updateMailIntelligence(); } catch (e) { }
     try { renderAgentCards(); } catch (e) { }

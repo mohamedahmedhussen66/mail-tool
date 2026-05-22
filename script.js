@@ -44,9 +44,39 @@ let appSettingsOptions = {
 db.collection("appSettings").doc("options").onSnapshot((doc) => {
     if (doc.exists) {
         const data = doc.data();
+        
+        // Robust sanitization and upgrade of categories (from legacy string array to {name, color} object array)
+        if (data && data.categories && Array.isArray(data.categories)) {
+            data.categories = data.categories.map(c => {
+                if (typeof c === 'string') {
+                    // Legacy upgrade path
+                    let color = "#95a5a6"; // General default
+                    if (c.includes("New Policy")) color = "#27ae60";
+                    else if (c.includes("Update")) color = "#3498db";
+                    else if (c.includes("Urgent")) color = "#e74c3c";
+                    return { name: c, color: color };
+                } else if (c && typeof c === 'object' && c.name) {
+                    return { name: c.name, color: c.color || "#95a5a6" };
+                }
+                return null;
+            }).filter(Boolean);
+        }
+
+        // Sanitize topics to ensure it's a valid array of trimmed strings
+        if (data && data.topics && Array.isArray(data.topics)) {
+            data.topics = data.topics.map(t => typeof t === 'string' ? t.trim() : String(t).trim()).filter(Boolean);
+        }
+
+        // Sanitize senders to ensure it's a valid array of trimmed strings
+        if (data && data.senders && Array.isArray(data.senders)) {
+            data.senders = data.senders.map(s => typeof s === 'string' ? s.trim() : String(s).trim()).filter(Boolean);
+        }
+
         appSettingsOptions = { ...appSettingsOptions, ...data };
     } else {
-        db.collection("appSettings").doc("options").set(appSettingsOptions);
+        db.collection("appSettings").doc("options").set(appSettingsOptions).catch(err => {
+            console.error("Failed to initialize app settings options:", err);
+        });
     }
     renderSelectOptions();
 });
@@ -71,7 +101,7 @@ function renderSelectOptions() {
     }
     if (categorySelect && appSettingsOptions.categories && appSettingsOptions.categories.length) {
         categorySelect.innerHTML =
-            appSettingsOptions.categories.map(c =>
+            appSettingsOptions.categories.filter(c => c && c.name).map(c =>
                 `<option value="${c.name}">${c.name}</option>`
             ).join('') +
             '<option value="Custom">✨ Custom Category</option>';
@@ -1005,7 +1035,7 @@ function renderTable(data) {
             row.classList.add("unread-row");
         }
 
-        let selectHtml = isAdminSession ? `<td style="width:40px; text-align:center;"><input type="checkbox" class="bulk-cb" value="${m.id}" onclick="event.stopPropagation()" onchange="handleBulkSelectionChange()"></td>` : ``;
+        let selectHtml = isAdminSession ? `<td class="td-bulk-cb"><input type="checkbox" class="bulk-cb" value="${m.id}" onclick="event.stopPropagation()" onchange="handleBulkSelectionChange()"></td>` : ``;
 
         // ⭐ التعديل 7: Countdown للترَاش للأدمن
         let trashTimerHtml = '';
@@ -1028,8 +1058,8 @@ function renderTable(data) {
 
         row.innerHTML = `
             ${selectHtml}
-            <td style="white-space: nowrap; width: 180px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
+            <td style="white-space: nowrap; width: 1%; text-align: center;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
                     <div style="width: 35px; display: flex; gap: 2px; justify-content: center; align-items: center;">
                         <span style="color:#f1c40f; font-size: 14px;">${userFavorites.includes(m.id) ? '★' : ''}</span>
                         <span style="font-size: 14px;">${m.isPinned || userPinned.includes(m.id) ? '📌' : ''}</span>
@@ -1046,11 +1076,11 @@ function renderTable(data) {
                 </div>
             </td>
             
-            <td style="font-weight: 500;">${highlight(m.topic)}</td>
-            <td>${highlight(m.idea) || '---'}</td>
-            <td>
-                <div style="display:flex; flex-wrap:wrap; gap:2px;">
-                    ${(m.keywords || m.sender || "").split(',').map(k => k.trim() ? `<span style="background:rgba(46,125,50,0.1); color:#2e7d32; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:bold; margin:2px; display:inline-block;">${highlight(k.trim())}</span>` : '').join('') || '---'}
+            <td style="font-weight: 500; text-align: center;">${highlight(m.topic)}</td>
+            <td style="white-space: nowrap; text-align: center;">${highlight(m.idea) || '---'}</td>
+            <td style="width: 1%; white-space: nowrap; text-align: center;">
+                <div style="display: inline-flex; justify-content: center; align-items: center; flex-wrap: nowrap; gap: 2px;">
+                    ${(m.keywords || m.sender || "").split(',').map(k => k.trim() ? `<span style="background:rgba(46,125,50,0.1); color:#2e7d32; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:bold; display:inline-block; white-space: nowrap;">${highlight(k.trim())}</span>` : '').join('') || '---'}
                 </div>
             </td>
         `;
@@ -1364,10 +1394,10 @@ function renderTable(data) {
 
         previewRow.innerHTML = `
             <td colspan="${textCols}" style="text-align: right; padding-right: 15px; color: #555; direction: rtl; cursor: pointer; max-width: 0; width: 100%;" title="Click to open this mail">
-                <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%;">📄 ${previewText}</div>
+                <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%;">✉️ ${previewText}</div>
             </td>
-            <td colspan="${emptyRightCols}" style="padding: 4px 8px; border-top:none; background:transparent; vertical-align:middle; width: 120px;">
-                <div class="row-inline-actions" style="display:flex; justify-content:flex-end; gap:6px;">
+            <td colspan="${emptyRightCols}" style="padding: 4px 8px; border-top:none; background:transparent; vertical-align:middle; width: 120px; text-align:center;">
+                <div class="row-inline-actions" style="display:inline-flex; justify-content:center; align-items:center; gap:6px;">
                     ${buildRowInlineActions(m)}
                 </div>
             </td>
@@ -1377,6 +1407,17 @@ function renderTable(data) {
             e.stopPropagation();
             row.click();
         });
+
+        // Cross-hover: icons visible when hovering EITHER the mail row OR the preview row
+        const setHovered = (on) => {
+            previewRow.classList.toggle('row-hovered', on);
+            row.classList.toggle('row-hovered', on);
+        };
+        row.addEventListener('mouseenter', () => setHovered(true));
+        row.addEventListener('mouseleave', () => setHovered(false));
+        previewRow.addEventListener('mouseenter', () => setHovered(true));
+        previewRow.addEventListener('mouseleave', () => setHovered(false));
+
         fragment.appendChild(previewRow);
     });
 
@@ -1489,7 +1530,33 @@ function userRestoreMail(id) {
     refreshDisplay();
 }
 
+function unwrapCurrentActiveImage() {
+    const activeWrappers = document.querySelectorAll('.jodit-wysiwyg .hdb-img-wrapper');
+    activeWrappers.forEach(wrap => {
+        const img = wrap.querySelector('img');
+        if (img) {
+            img.style.left = wrap.style.left;
+            img.style.top = wrap.style.top;
+            img.style.position = wrap.style.position;
+            img.style.float = wrap.style.float;
+            img.style.margin = wrap.style.margin;
+            img.style.display = wrap.style.display === 'inline-block' ? '' : wrap.style.display;
+            img.style.verticalAlign = wrap.style.verticalAlign;
+            
+            img.style.outline = '';
+            img.style.outlineOffset = '';
+            img.style.transition = '';
+            
+            if (wrap.parentNode) wrap.parentNode.insertBefore(img, wrap);
+        }
+        wrap.remove();
+    });
+    const handles = document.querySelectorAll('.jodit-wysiwyg .hdb-resize-handle');
+    handles.forEach(h => h.remove());
+}
+
 async function addNewEntry(isDraft = false) {
+    unwrapCurrentActiveImage();
     const btn = document.querySelector('#adminSaveButtons button:first-child');
     const originalText = btn ? btn.innerHTML : "Publish";
     if (btn) {
@@ -1626,6 +1693,28 @@ function getStrongDir(text) {
         if (code >= 0x00C0 && code <= 0x024F) return 'ltr';
     }
     return null; // neutral (numbers/punctuation only)
+}
+
+/**
+ * Auto RTL/LTR for plain <input> and <textarea> fields.
+ * Uses the same getStrongDir engine as the Jodit editor.
+ * Call via oninput="smartDirInput(this)"
+ */
+function smartDirInput(el) {
+    if (!el) return;
+    const text = el.value || '';
+    const detected = getStrongDir(text);
+    const dir = detected || 'rtl'; // default RTL when neutral (numbers/empty)
+    el.dir = dir;
+    el.style.textAlign = dir === 'rtl' ? 'right' : 'left';
+}
+
+/**
+ * Initialize direction on a field based on its existing value.
+ * Call after filling a field programmatically (e.g. loading edit form).
+ */
+function initFieldDir(el) {
+    if (el) smartDirInput(el);
 }
 
 function applySmartDirection(editorEl) {
@@ -2113,19 +2202,39 @@ function setupImageClickControls(editorEl) {
         const cmd = e.target.closest('[data-cmd]')?.dataset.cmd;
         if (!cmd || !_selectedImg) return;
         const img = _selectedImg;
+        const wrapper = img.closest('.hdb-img-wrapper');
 
         switch(cmd) {
             // ── Alignment ────────────────────────────────────────
             case 'float-left':
-                img.style.cssText += ';float:left;margin:0 18px 10px 0;display:block';
+                img.style.float = 'left';
+                img.style.margin = '0 18px 10px 0';
+                img.style.display = 'block';
+                if (wrapper) {
+                    wrapper.style.float = 'left';
+                    wrapper.style.margin = '0 18px 10px 0';
+                    wrapper.style.display = 'block';
+                }
                 break;
             case 'float-right':
-                img.style.cssText += ';float:right;margin:0 0 10px 18px;display:block';
+                img.style.float = 'right';
+                img.style.margin = '0 0 10px 18px';
+                img.style.display = 'block';
+                if (wrapper) {
+                    wrapper.style.float = 'right';
+                    wrapper.style.margin = '0 0 10px 18px';
+                    wrapper.style.display = 'block';
+                }
                 break;
             case 'center':
                 img.style.float = 'none';
                 img.style.display = 'block';
                 img.style.margin = '15px auto';
+                if (wrapper) {
+                    wrapper.style.float = 'none';
+                    wrapper.style.display = 'block';
+                    wrapper.style.margin = '15px auto';
+                }
                 break;
             case 'full-width':
                 img.style.width = '100%';
@@ -2133,12 +2242,31 @@ function setupImageClickControls(editorEl) {
                 img.style.float = 'none';
                 img.style.display = 'block';
                 img.style.margin = '15px 0';
+                if (wrapper) {
+                    wrapper.style.width = '100%';
+                    wrapper.style.height = 'auto';
+                    wrapper.style.float = 'none';
+                    wrapper.style.display = 'block';
+                    wrapper.style.margin = '15px 0';
+                }
                 break;
             // ── Sizes ─────────────────────────────────────────────
-            case 'size-small':    img.style.width = '200px'; img.style.height = 'auto'; break;
-            case 'size-medium':   img.style.width = '400px'; img.style.height = 'auto'; break;
-            case 'size-large':    img.style.width = '700px'; img.style.height = 'auto'; break;
-            case 'size-original': img.style.width = ''; img.style.height = ''; break;
+            case 'size-small':
+                img.style.width = '200px'; img.style.height = 'auto';
+                if (wrapper) { wrapper.style.width = '200px'; wrapper.style.height = 'auto'; }
+                break;
+            case 'size-medium':
+                img.style.width = '400px'; img.style.height = 'auto';
+                if (wrapper) { wrapper.style.width = '400px'; wrapper.style.height = 'auto'; }
+                break;
+            case 'size-large':
+                img.style.width = '700px'; img.style.height = 'auto';
+                if (wrapper) { wrapper.style.width = '700px'; wrapper.style.height = 'auto'; }
+                break;
+            case 'size-original':
+                img.style.width = ''; img.style.height = '';
+                if (wrapper) { wrapper.style.width = ''; wrapper.style.height = ''; }
+                break;
             // ── Toggle Styles ──────────────────────────────────────
             case 'toggle-rounded':
                 img.style.borderRadius = img.style.borderRadius && img.style.borderRadius !== '50%' ? '' : '12px';
@@ -2163,12 +2291,17 @@ function setupImageClickControls(editorEl) {
                 img.removeAttribute('style');
                 img.style.maxWidth = '100%';
                 img.style.cursor = savedCursor;
+                if (wrapper) {
+                    wrapper.removeAttribute('style');
+                    wrapper.style.position = 'relative';
+                    wrapper.style.display = 'inline-block';
+                }
                 break;
             case 'duplicate-img': {
                 const clone = img.cloneNode(true);
                 clone.style.cursor = 'grab';
                 img.parentNode.insertBefore(clone, img.nextSibling);
-                if (typeof showToast === 'function') showToast('Image duplicated \u2705', 'success');
+                if (typeof showToast === 'function') showToast('Image duplicated ✅', 'success');
                 break;
             }
             case 'add-caption': {
@@ -2203,9 +2336,14 @@ function setupImageClickControls(editorEl) {
             }
             case 'delete-img':
                 if (confirm('Delete this image?')) {
-                    const wrapper = img.closest('figure') || img;
-                    wrapper.remove();
+                    const wrapperEl = img.closest('figure') || img;
+                    wrapperEl.remove();
                     hideRow();
+                    
+                    // Notify Jodit of change
+                    if (typeof joditEditor !== 'undefined' && joditEditor) {
+                        joditEditor.events.fire('change');
+                    }
                     return;
                 }
                 break;
@@ -2216,6 +2354,11 @@ function setupImageClickControls(editorEl) {
         _updateDim();
         img.style.outline = '2.5px solid #2ecc71';
         img.style.outlineOffset = '3px';
+
+        // Notify Jodit of change
+        if (typeof joditEditor !== 'undefined' && joditEditor) {
+            joditEditor.events.fire('change');
+        }
     });
 
     // Escape key clears selection
@@ -2296,6 +2439,25 @@ function setupImageResizer() {
         }
         const wrap = document.createElement('span');
         wrap.className = 'hdb-img-wrapper';
+        
+        // Transfer positioning and layout styling from image to wrapper span
+        wrap.style.left = img.style.left;
+        wrap.style.top = img.style.top;
+        wrap.style.position = img.style.position || 'relative';
+        wrap.style.float = img.style.float;
+        wrap.style.margin = img.style.margin;
+        wrap.style.display = img.style.display || 'inline-block';
+        wrap.style.verticalAlign = img.style.verticalAlign || 'bottom';
+        wrap.style.width = img.style.width;
+        wrap.style.height = img.style.height;
+
+        // Clear layout styles on the image while wrapped to avoid double styling
+        img.style.left = '';
+        img.style.top = '';
+        img.style.position = '';
+        img.style.float = '';
+        img.style.margin = '';
+
         img.parentNode.insertBefore(wrap, img);
         wrap.appendChild(img);
         HANDLES.forEach(h => {
@@ -2312,9 +2474,30 @@ function setupImageResizer() {
     function unwrapImg(wrap) {
         if (!wrap) return;
         const img = wrap.querySelector('img');
-        if (img && wrap.parentNode) wrap.parentNode.insertBefore(img, wrap);
+        if (img) {
+            // Restore positioning, layout, and size styles back to the image
+            img.style.left = wrap.style.left;
+            img.style.top = wrap.style.top;
+            img.style.position = wrap.style.position;
+            img.style.float = wrap.style.float;
+            img.style.margin = wrap.style.margin;
+            img.style.display = wrap.style.display === 'inline-block' ? '' : wrap.style.display;
+            img.style.verticalAlign = wrap.style.verticalAlign;
+            
+            // Clean selection outlines
+            img.style.outline = '';
+            img.style.outlineOffset = '';
+            img.style.transition = '';
+
+            if (wrap.parentNode) wrap.parentNode.insertBefore(img, wrap);
+        }
         wrap.remove();
         _wrapper = null;
+        
+        // Notify Jodit of change
+        if (typeof joditEditor !== 'undefined' && joditEditor) {
+            joditEditor.events.fire('change');
+        }
     }
 
     document.addEventListener('click', e => {
@@ -2376,6 +2559,12 @@ function setupImageResizer() {
 
         _img.style.width  = w + 'px';
         _img.style.height = h + 'px';
+        
+        const wrap = _img.closest('.hdb-img-wrapper');
+        if (wrap) {
+            wrap.style.width = w + 'px';
+            wrap.style.height = h + 'px';
+        }
 
         const dimEl = document.getElementById('hdb-img-dimensions');
         if (dimEl) dimEl.textContent = w + ' \u00d7 ' + h;
@@ -2393,6 +2582,11 @@ function setupImageResizer() {
         document.body.style.cursor = '';
         document.removeEventListener('mousemove', onResizeMove);
         document.removeEventListener('mouseup',   onResizeUp);
+
+        // Notify Jodit of change
+        if (typeof joditEditor !== 'undefined' && joditEditor) {
+            joditEditor.events.fire('change');
+        }
     }
 
     document.addEventListener('keydown', e => {
@@ -2407,12 +2601,25 @@ function setupImageResizer() {
         const step = e.shiftKey ? 10 : 1;
         const w = img.offsetWidth, h = img.offsetHeight;
         const ratio = w / (h || 1);
-        if (e.key === 'ArrowRight') { const nw = Math.min(MAX_SIZE, w + step); img.style.width = nw + 'px'; img.style.height = Math.round(nw/ratio) + 'px'; }
-        if (e.key === 'ArrowLeft')  { const nw = Math.max(MIN_SIZE, w - step); img.style.width = nw + 'px'; img.style.height = Math.round(nw/ratio) + 'px'; }
-        if (e.key === 'ArrowDown')  { const nh = Math.min(MAX_SIZE, h + step); img.style.height = nh + 'px'; img.style.width = Math.round(nh*ratio) + 'px'; }
-        if (e.key === 'ArrowUp')    { const nh = Math.max(MIN_SIZE, h - step); img.style.height = nh + 'px'; img.style.width = Math.round(nh*ratio) + 'px'; }
+        
+        let nw = w, nh = h;
+        if (e.key === 'ArrowRight') { nw = Math.min(MAX_SIZE, w + step); nh = Math.round(nw/ratio); }
+        if (e.key === 'ArrowLeft')  { nw = Math.max(MIN_SIZE, w - step); nh = Math.round(nw/ratio); }
+        if (e.key === 'ArrowDown')  { nh = Math.min(MAX_SIZE, h + step); nw = Math.round(nh*ratio); }
+        if (e.key === 'ArrowUp')    { nh = Math.max(MIN_SIZE, h - step); nw = Math.round(nh*ratio); }
+        
+        img.style.width = nw + 'px';
+        img.style.height = nh + 'px';
+        _wrapper.style.width = nw + 'px';
+        _wrapper.style.height = nh + 'px';
+
         const dimEl = document.getElementById('hdb-img-dimensions');
         if (dimEl) { const r = img.getBoundingClientRect(); dimEl.textContent = Math.round(r.width) + ' \u00d7 ' + Math.round(r.height); }
+
+        // Notify Jodit of change
+        if (typeof joditEditor !== 'undefined' && joditEditor) {
+            joditEditor.events.fire('change');
+        }
     });
 }
 
@@ -2451,12 +2658,15 @@ function enableImageDragDrop(editorEl) {
         
         // If wrapped, we move the wrapper. If not, we move the image.
         const targetEl = _wrapper || _dragImg;
+        if (targetEl && !targetEl.style.position) {
+            targetEl.style.position = 'relative';
+        }
 
         _startX  = e.clientX;
         _startY  = e.clientY;
         
-        _startMarginLeft = parseInt(getComputedStyle(targetEl).marginLeft) || 0;
-        _startMarginTop = parseInt(getComputedStyle(targetEl).marginTop) || 0;
+        _startLeft = parseInt(targetEl.style.left) || 0;
+        _startTop  = parseInt(targetEl.style.top) || 0;
 
         const doc = editorEl.ownerDocument || document;
 
@@ -2472,9 +2682,9 @@ function enableImageDragDrop(editorEl) {
                 targetEl.style.cursor = 'grabbing';
             }
 
-            // Move freely via margins for pixel-perfect placement (Free Drag)
-            targetEl.style.marginLeft = (_startMarginLeft + dx) + 'px';
-            targetEl.style.marginTop  = (_startMarginTop + dy) + 'px';
+            // Move freely via relative positioning for pixel-perfect placement (Free Drag) without shifting siblings
+            targetEl.style.left = (_startLeft + dx) + 'px';
+            targetEl.style.top  = (_startTop + dy) + 'px';
         };
 
         const onUp = ev => {
@@ -2485,6 +2695,11 @@ function enableImageDragDrop(editorEl) {
             if (_isDragging && targetEl) {
                 targetEl.style.cursor = 'default';
                 if (typeof showToast === 'function') showToast('Image moved freely \u2705', 'success');
+                
+                // Notify Jodit of change
+                if (typeof joditEditor !== 'undefined' && joditEditor) {
+                    joditEditor.events.fire('change');
+                }
             }
 
             _isDragging = false;
@@ -2635,8 +2850,8 @@ function setupEditorDropZone(editorEl) {
                         processed++;
                         showProgress(processed, allFiles.length);
 
-                        // Insert image inline so they can be side-by-side
-                        const imgHtml = '<img src="' + compressed + '" style="max-width:100%;height:auto;border-radius:6px;display:inline-block;margin:4px;cursor:grab;" />';
+                        // Insert image inline — width:auto so it doesn't stretch full row
+                        const imgHtml = '<img src="' + compressed + '" style="width:auto;max-width:45%;height:auto;border-radius:6px;display:inline-block;margin:4px;cursor:grab;" />';
                         if (typeof joditEditor !== 'undefined' && joditEditor && joditEditor.s) {
                             joditEditor.s.insertHTML(imgHtml);
                         }
@@ -2650,12 +2865,15 @@ function setupEditorDropZone(editorEl) {
                 processed++;
                 showProgress(processed, allFiles.length);
                 const ext = file.name.split('.').pop().toUpperCase();
-                const attachHtml = `&nbsp;<a href="#" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:linear-gradient(to bottom, #f8f9fa, #e9ecef); border:1px solid #ced4da; border-radius:6px; text-decoration:none; color:#2c3e50; font-family:sans-serif; font-size:13px; margin:4px; vertical-align:middle; box-shadow:0 1px 2px rgba(0,0,0,0.05);" contenteditable="false"><span style="font-size:16px;">📎</span><strong style="max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${file.name}</strong><span style="font-size:11px; background:#e0e0e0; padding:2px 6px; border-radius:4px;">${ext}</span></a>&nbsp;`;
-                
+                // Store as blob URL so clicking badge opens the file
+                const blobUrl = URL.createObjectURL(file);
+                const safeFileName = file.name.replace(/'/g, "\\'");
+                const attachHtml = `&nbsp;<span onclick="event.stopPropagation(); window.open('${blobUrl}','_blank');" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:linear-gradient(to bottom, #f8f9fa, #e9ecef); border:1px solid #ced4da; border-radius:6px; text-decoration:none; color:#2c3e50; font-family:sans-serif; font-size:13px; margin:4px; vertical-align:middle; box-shadow:0 1px 2px rgba(0,0,0,0.05); cursor:pointer;" contenteditable="false" title="Click to open ${safeFileName}"><span style="font-size:16px;">📎</span><strong style="max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${file.name}</strong><span style="font-size:11px; background:#e0e0e0; padding:2px 6px; border-radius:4px;">${ext}</span></span>&nbsp;`;
+
                 if (typeof joditEditor !== 'undefined' && joditEditor && joditEditor.s) {
                     joditEditor.s.insertHTML(attachHtml);
                 }
-                
+
                 if (processed >= allFiles.length) hideProgress();
             }
         });
@@ -3106,6 +3324,12 @@ function executeSearch(val) {
         return;
     }
 
+    // Enrich mails with plain-text content for searching
+    const searchableMails = currentViewMails.map(m => ({
+        ...m,
+        cleanContent: m.content ? m.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : ''
+    }));
+
     const options = {
         keys: [
             "code", "topic", "idea", "sender", "keywords", "category", "tags", "cleanContent"
@@ -3119,7 +3343,7 @@ function executeSearch(val) {
         includeMatches: true
     };
 
-    const fuse = new Fuse(currentViewMails, options);
+    const fuse = new Fuse(searchableMails, options);
     const result = fuse.search(term);
 
     // Typo suggestion based on common banking context (Feature 3 & 4)
@@ -3956,6 +4180,12 @@ function toggleMailZenMode(enable) {
     const zenBtn = box.querySelector('[data-zen-btn]');
 
     if (enable) {
+        // Clear side-panel temporarily if active to avoid z-index & layout conflicts with position:fixed
+        if (box.classList.contains('side-panel')) {
+            box.setAttribute('data-was-side-panel', 'true');
+            box.classList.remove('side-panel');
+            document.body.classList.remove('side-panel-open');
+        }
         box.classList.add('zen-mode');
         box.classList.remove('minimized');
         if (overlay) { overlay.style.display = 'block'; }
@@ -3968,6 +4198,13 @@ function toggleMailZenMode(enable) {
         if (overlay) { overlay.style.display = 'none'; overlay.onclick = null; }
         document.body.style.overflow = '';
         if (zenBtn) { zenBtn.textContent = '⛶'; zenBtn.title = 'Full Screen'; }
+        
+        // Restore side-panel state if we came from it
+        if (box.getAttribute('data-was-side-panel') === 'true') {
+            box.removeAttribute('data-was-side-panel');
+            box.classList.add('side-panel');
+            document.body.classList.add('side-panel-open');
+        }
     }
 }
 
@@ -4141,61 +4378,7 @@ function launchMailConfetti() {
 // ===  NEW PREMIUM FEATURES — Round 2
 // ============================================================
 
-/** Peek Preview — hover card on table rows */
-(function initPeekPreview() {
-    let card = null;
-    let hideTimer = null;
-
-    function showPeek(e, m) {
-        clearTimeout(hideTimer);
-        if (!card) {
-            card = document.createElement('div');
-            card.className = 'peek-preview-card';
-            document.body.appendChild(card);
-        }
-        const preview = (m.content || '').replace(/<[^>]*>/g, '').substring(0, 160);
-        card.innerHTML = `
-            <div class="peek-topic">${m.topic || ''}</div>
-            <div class="peek-body">${preview}...</div>
-        `;
-        card.style.display = 'block';
-        positionPeek(e);
-    }
-
-    function positionPeek(e) {
-        if (!card) return;
-        const x = e.clientX + 14;
-        const y = e.clientY - 10;
-        const cardW = 320;
-        const cardH = 110;
-        card.style.left = (x + cardW > window.innerWidth ? x - cardW - 20 : x) + 'px';
-        card.style.top = (y + cardH > window.innerHeight ? y - cardH : y) + 'px';
-    }
-
-    function hidePeek() {
-        hideTimer = setTimeout(() => {
-            if (card) card.style.display = 'none';
-        }, 120);
-    }
-
-    document.addEventListener('mouseover', (e) => {
-        const row = e.target.closest('#tableBody tr[data-id]:not(.preview)');
-        if (!row) { hidePeek(); return; }
-        const id = row.getAttribute('data-id');
-        const m = allMails.find(x => x.id === id);
-        if (!m) return;
-        showPeek(e, m);
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (card && card.style.display !== 'none') positionPeek(e);
-    });
-
-    document.addEventListener('mouseout', (e) => {
-        const row = e.target.closest('#tableBody tr[data-id]:not(.preview)');
-        if (row) hidePeek();
-    });
-})();
+/** Peek Preview disabled as requested by the user */
 
 /** Toggle Minimize mail box — fold to header strip */
 function toggleMailMinimize() {
@@ -4561,6 +4744,7 @@ function editMail(id) {
     topicSelect.value = mail.topic || "";
 
     document.getElementById('addIdea').value = mail.idea || "";
+    initFieldDir(document.getElementById('addIdea'));
     document.getElementById('addKeywords').value = mail.keywords || mail.sender || "";
     document.getElementById('expiryDate').value = mail.expiryDate || "";
 
@@ -4879,7 +5063,7 @@ function addCurrentOption() {
 
     if (currentManageType === 'categories') {
         const color = document.getElementById('manageColorPicker').value || '#95a5a6';
-        if (!appSettingsOptions.categories.find(c => c.name === val)) {
+        if (!appSettingsOptions.categories.find(c => c && c.name === val)) {
             appSettingsOptions.categories.push({ name: val, color: color });
         }
     } else {
@@ -4888,23 +5072,41 @@ function addCurrentOption() {
         }
     }
 
-    db.collection("appSettings").doc("options").set(appSettingsOptions);
+    db.collection("appSettings").doc("options").set(appSettingsOptions)
+        .then(() => {
+            showToast("Option added successfully! ✅", "success");
+        })
+        .catch(err => {
+            console.error("Firestore write failed:", err);
+            showToast("Failed to save option: " + err.message, "error");
+        });
+
     document.getElementById('newOptionInput').value = '';
     renderManageList();
 }
 
 function removeOption(val) {
     if (currentManageType === 'categories') {
-        appSettingsOptions.categories = appSettingsOptions.categories.filter(c => c.name !== val);
+        appSettingsOptions.categories = appSettingsOptions.categories.filter(c => c && c.name !== val);
     } else {
         appSettingsOptions[currentManageType] = appSettingsOptions[currentManageType].filter(x => x !== val);
     }
-    db.collection("appSettings").doc("options").set(appSettingsOptions);
+
+    db.collection("appSettings").doc("options").set(appSettingsOptions)
+        .then(() => {
+            showToast("Option removed successfully! 🗑️", "success");
+        })
+        .catch(err => {
+            console.error("Firestore write failed:", err);
+            showToast("Failed to remove option: " + err.message, "error");
+        });
+
     renderManageList();
 }
 
 async function updateExistingEntry(isDraft = false) {
     if (!currentlyEditingId) return;
+    unwrapCurrentActiveImage();
 
     const btn = document.querySelector('#adminUpdateButtons button:first-child');
     const originalText = btn ? btn.innerHTML : "Update";

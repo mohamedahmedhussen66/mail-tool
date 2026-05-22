@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar">
 
 <head>
@@ -157,7 +157,7 @@
 
                     <div>
                         <label
-                            style="font-size:12px; font-weight:bold; color:#7f8c8d; margin-bottom:5px; display:block;">State:</label>
+                            style="font-size:12px; font-weight:bold; color:#7f8c8d; margin-bottom:5px; display:block;">Status:</label>
                         <div style="display:flex; gap:5px;">
                             <select id="addCategory"
                                 style="padding: 12px; border-radius: 10px; border: 1px solid #ddd; flex: 1;"
@@ -224,8 +224,11 @@
                 </div>
 
                 <div class="idea-box" style="margin-top: 15px; margin-bottom: 25px;">
-                    <input type="text" id="addIdea" placeholder="Short description / Summary (Optional)"
-                        style="width: 100%;">
+                    <input type="text" id="addIdea"
+                        placeholder="Short description / Summary (Optional)"
+                        dir="auto"
+                        oninput="smartDirInput(this)"
+                        style="width: 100%; transition: text-align 0.15s ease;">
                 </div>
 
                 <div style="position: relative; margin-top: 15px; margin-bottom: 25px;">
@@ -352,8 +355,7 @@
         </div>
         <div class="title-box">
             <h1 class="main-title">Quality Team Updates</h1>
-            <!-- Re-integrated features will be placed here carefully -->
-            <div id="welcomeArea" style="font-size: 13px; color: #7f8c8d; margin-top: 5px; font-weight: 500;">
+            <div id="welcomeArea" style="font-size: 13px; color: #7f8c8d; margin-top: 3px; font-weight: 500;">
                 <span id="userNameDisplay">Welcome</span>
             </div>
         </div>
@@ -362,7 +364,7 @@
         </div>
     </div>
 
-
+    <!-- Standalone horizontally-centered smart search box -->
     <div class="search-box">
         <div id="typoSuggestion"></div>
         <input type="text" class="search-input" id="searchInput" placeholder="Search by anything..."
@@ -374,6 +376,7 @@
             style="display:none; position:absolute; right:45px; top:50%; transform:translateY(-50%); cursor:pointer; color:#999; font-size:16px; font-weight:bold;">✖</span>
         <div id="searchHistoryBox"></div>
     </div>
+
 
     <!-- Admin Top Bars removed as requested -->
     <!-- Mail Box Zen Mode Overlay -->
@@ -400,12 +403,12 @@
             <table id="table" style="width: 100%; border-collapse: collapse; margin-top: 8px;">
                 <thead>
                     <tr>
-                        <th class="td-bulk-cb" style="display:none; width: 40px; text-align:center;">
+                        <th class="td-bulk-cb" style="display:none;">
                             <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
                         </th>
-                        <th style="color:white;">
+                        <th style="color:white; width: 1%; white-space:nowrap; text-align:center;">
                             <div class="dropdown" onclick="toggleDropdown(event, 'code')">
-                                <div class="header-flex">
+                                <div class="header-flex" style="justify-content: center;">
                                     <span class="column-title">Code | Status</span>
                                     <span class="filter-icon">🔍</span>
                                 </div>
@@ -417,9 +420,9 @@
                             </div>
                         </th>
 
-                        <th>
+                        <th style="width: 18%; white-space:nowrap; text-align:center;">
                             <div class="dropdown" onclick="toggleDropdown(event, 'topic')">
-                                <div class="header-flex">
+                                <div class="header-flex" style="justify-content: center;">
                                     <span class="column-title">Topic</span>
                                     <span class="filter-icon">🔍</span>
                                 </div>
@@ -431,11 +434,11 @@
                             </div>
                         </th>
 
-                        <th>Main Idea</th>
+                        <th style="width: auto; white-space:nowrap; text-align:center;">Main Idea</th>
 
-                        <th>
+                        <th style="width: 1%; white-space:nowrap; text-align:center;">
                             <div class="dropdown" onclick="toggleDropdown(event, 'keywords')">
-                                <div class="header-flex">
+                                <div class="header-flex" style="justify-content: center;">
                                     <span class="column-title">Key words</span>
                                     <span class="filter-icon">🔍</span>
                                 </div>

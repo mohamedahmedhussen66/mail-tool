@@ -188,7 +188,7 @@
                 <li onclick="switchTab('controls')">
                     <span class="icon">🕹️</span> <span data-i18n="master_controls">Master Controls</span>
                 </li>
-                <li onclick="switchTab('audit')">
+                <li onclick="switchTab('controls')">
                     <span class="icon">🛡️</span> <span data-i18n="security_audit">Audit Log</span>
                 </li>
                 <li onclick="switchTab('admincore')"
@@ -284,9 +284,9 @@
                             </div>
                             <div class="flip-card-back">
                                 <h4>Breakdown</h4>
-                                <p>Urgent: 140</p>
-                                <p>Updates: 800</p>
-                                <p>Policies: 305</p>
+                                <p>Urgent: <span id="backUrgentCount">--</span></p>
+                                <p>Updates: <span id="backUpdateCount">--</span></p>
+                                <p>Policies: <span id="backPolicyCount">--</span></p>
                             </div>
                         </div>
                     </div>
@@ -304,7 +304,7 @@
                             </div>
                             <div class="flip-card-back">
                                 <h4>Details</h4>
-                                <p>Unread Mails: <span style="color:var(--danger)">174</span></p>
+                                <p>Missing Reads: <span id="unreadGlobalVal" style="color:var(--danger)">--</span></p>
                                 <p>Conf. Rate: <span id="confRateVal"
                                         style="color:var(--primary); font-weight:bold;">--</span></p>
                             </div>

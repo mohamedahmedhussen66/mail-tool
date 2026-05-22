@@ -32,11 +32,13 @@ body {
     background: #f8fff8;
     transition: background 0.3s, color 0.3s;
     overflow-x: hidden;
+    position: relative; /* Anchor for absolute watermark-button-container */
 }
 
 html {
     scroll-behavior: smooth;
 }
+
 
 .title {
     font-size: 36px;
@@ -49,24 +51,28 @@ html {
 
 .search-box {
     position: relative;
-    width: 100%;
-    max-width: 340px; /* Match title width */
-    margin: 8px 0 25px 0; /* Keep it left-aligned with the title */
-    z-index: 50; /* Lower z-index so it doesn't overlap login screen */
+    display: block;
+    width: 340px;
+    margin: 0 auto 25px auto; /* Centered horizontally */
+    z-index: 50;
 }
 
 .search-box input {
     width: 100%;
-    padding: 12px 40px; /* Equal padding so text is perfectly centered */
-    border: 1px solid rgba(46,125,50,0.4);
+    box-sizing: border-box;
+    padding: 11px 44px 11px 16px; /* Left text, icon on right */
+    border: 1px solid rgba(46,125,50,0.35);
     border-radius: 30px;
     font-size: 14px;
     outline: none;
     background: white;
-    text-align: center; /* Center the search text */
+    text-align: left;
+    color: #2c3e50;
     box-shadow: 0 4px 15px rgba(0,0,0,0.04);
     transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+
+.search-box input::placeholder { color: #aaa; }
 
 .search-box input:focus {
     box-shadow: 0 0 15px rgba(46, 125, 50, 0.2);
@@ -75,10 +81,10 @@ html {
 
 .search-box .search-icon {
     position: absolute;
-    right: 15px; /* ✅ Pushed exactly to the far right edge */
+    right: 14px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 18px;
+    font-size: 17px;
     color: #2e7d32;
     pointer-events: none;
 }
@@ -369,6 +375,10 @@ th .resizer {
     scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: rgba(46,125,50,0.3) transparent;
+    /* Hardware acceleration to eliminate scroll lag */
+    will-change: transform;
+    transform: translate3d(0,0,0);
+    backface-visibility: hidden;
 }
 
 .mail-box-body::-webkit-scrollbar {
@@ -386,18 +396,17 @@ th .resizer {
 
 /* === Mail Box Footer === */
 .mail-box-footer {
-    padding: 18px 22px; /* Increased vertical padding */
-    min-height: 64px; /* Ensure badges have room */
+    padding: 6px 14px;
     border-top: 1px solid rgba(46, 125, 50, 0.1);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 6px;
     flex-wrap: wrap;
     background: rgba(248, 255, 248, 0.6);
     border-radius: 0 0 18px 18px;
     font-size: 12px;
-    color: #7f8c8d;
+    min-height: unset;
 }
 
 .mail-box-footer-author {
@@ -1082,6 +1091,25 @@ th {
     text-align: center;
 }
 
+/* Checkbox column — locked to absolute minimum size */
+.td-bulk-cb,
+#table th.td-bulk-cb,
+#table td.td-bulk-cb {
+    width: 18px !important;
+    max-width: 18px !important;
+    min-width: 18px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    text-align: center !important;
+}
+.td-bulk-cb input[type="checkbox"] {
+    width: 13px !important;
+    height: 13px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    vertical-align: middle;
+}
+
 /* T3: Improved preview row — better readability */
 .preview td {
     background: rgba(241,248,233,0.7);
@@ -1500,7 +1528,7 @@ body.dark-mode .category-badge.custom-cat {
 
 
 .watermark-button-container {
-    position: fixed !important;
+    position: absolute !important;
     top: 40px;
     right: 40px;
     z-index: 5000;
@@ -2165,10 +2193,11 @@ body.dark-mode .main-title {
     top: 25px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 10001;
+    z-index: 9999999; /* Above splash (999999) + login screen */
     display: flex;
     flex-direction: column;
     align-items: center;
+    pointer-events: none;
 }
 
 .toast-card {
@@ -3212,19 +3241,29 @@ body.dark-mode .jodit-container.hdb-focus-mode {
 .row-inline-actions {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.18s ease, transform 0.18s ease;
     transform: translateX(6px);
     vertical-align: middle;
-    float: right;
-    margin-top: 2px;
+    margin: 2px auto 0 auto;
 }
-#tableBody tr:hover .row-inline-actions {
+#tableBody tr:hover .row-inline-actions,
+#tableBody tr.row-hovered .row-inline-actions {
     opacity: 1;
     pointer-events: all;
     transform: translateX(0);
+}
+
+/* Fix: images in Jodit editor are inline so 2 images can sit side-by-side */
+.jodit-wysiwyg img,
+#mailBoxContent img {
+    display: inline-block !important;
+    width: auto !important;
+    max-width: 100% !important;
+    vertical-align: middle;
 }
 .row-action-icon {
     width: 44px;
@@ -3266,9 +3305,18 @@ body.dark-mode .row-action-icon {
 }
 
 /* T14: Side panel compact */
-body.side-panel-open #table th, body.side-panel-open #table td { padding-left:8px; padding-right:8px; font-size:12px; }
+body.side-panel-open #table th, body.side-panel-open #table td { padding-left:6px; padding-right:6px; font-size:12px; }
 body.side-panel-open .category-badge, body.side-panel-open .urgent-badge { font-size:10px; padding:3px 7px; }
-body.side-panel-open .row-inline-actions { gap: 2px; }
+body.side-panel-open .row-inline-actions { gap: 1px; }
+body.side-panel-open .row-action-icon {
+    width: 28px !important;
+    height: 26px !important;
+    font-size: 11px !important;
+    border-radius: 5px;
+}
+body.side-panel-open #tableBody tr.preview td:last-child {
+    width: 155px !important;
+}
 
 /* 📱
    T14: FULL RESPONSIVE DESIGN - Mobile / Tablet / Projector
@@ -3280,19 +3328,45 @@ body.side-panel-open .row-inline-actions { gap: 2px; }
     .main-title { font-size: 18px !important; }
     .search-box { width: 95% !important; margin: 6px auto; }
     .search-input { font-size: 13px; padding: 8px 12px; }
-    #tableContentArea { overflow-x: auto; }
-    #table { min-width: 600px; font-size: 11px; }
+
+    /* Table scrolls horizontally on mobile */
+    #tableContentArea { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    #table { min-width: 580px; font-size: 11px; }
     th, td { padding: 5px 6px !important; font-size: 11px; }
     .category-badge, .urgent-badge { font-size: 9px; padding: 2px 6px; }
-    .mail-box { width: 100% !important; min-width: unset !important; }
+
+    /* Mail box full width, scrollable */
+    .mail-box {
+        width: 100% !important;
+        min-width: unset !important;
+        max-height: 75vh;
+        overflow-y: auto;
+    }
     .mail-box-header { flex-direction: column; gap: 6px; padding: 8px 10px; }
+    .mail-box-body { max-height: 55vh !important; }
+
+    /* Watermark smaller on mobile */
     .watermark-button-container { top: 10px; right: 12px; }
-    .watermark-icon { width: 42px !important; height: 42px !important; }
-    #watermarkMenu { right: -10px; width: 200px; }
-    .row-inline-actions { display: none; } /* hide on mobile - touch tap opens mail */
+    .watermark-icon { width: 38px !important; height: 38px !important; }
+    #watermarkMenu { right: -10px; width: 190px; }
+
+    /* Hide inline actions on mobile - tap opens mail */
+    .row-inline-actions { display: none !important; }
+
+    /* Layout stacks vertically */
     #pageLayoutArea { flex-direction: column !important; }
     #sidePanel { width: 100% !important; min-width: unset !important; }
+
+    /* Admin form readable on mobile */
     .admin-content { padding: 10px; }
+    .admin-content input,
+    .admin-content select,
+    .admin-content textarea { font-size: 14px !important; padding: 8px 10px !important; }
+    #addIdea { font-size: 14px !important; }
+    .jodit-container { min-height: 220px !important; }
+
+    /* Search bar hint smaller */
+    .search-hint { font-size: 10px; }
 }
 
 /* 📱 ➡️ Tablet (601px - 900px) 📱 */
@@ -3301,47 +3375,37 @@ body.side-panel-open .row-inline-actions { gap: 2px; }
     .search-box { width: 85% !important; }
     #table { font-size: 12px; }
     th, td { padding: 6px 8px !important; }
-    .mail-box { min-width: 300px !important; max-width: 50vw !important; }
+
+    /* Mail box */
+    .mail-box {
+        min-width: 280px !important;
+        max-width: 48vw !important;
+    }
+    .mail-box-body { max-height: 55vh !important; }
+
+    /* Watermark */
     .watermark-button-container { top: 20px; right: 20px; }
     .watermark-icon { width: 48px !important; height: 48px !important; }
-    .row-inline-actions button, .row-action-icon { width: 26px; height: 26px; font-size: 11px; }
+
+    /* Action icons */
+    .row-inline-actions button, .row-action-icon { width: 30px; height: 28px; font-size: 12px; }
+
+    /* Layout */
     #pageLayoutArea { flex-wrap: wrap; }
+
+    /* Admin form */
+    .admin-content input,
+    .admin-content select { font-size: 13px; }
+    .jodit-container { min-height: 280px !important; }
 }
 
 /* 💻 ➡️ Laptop (901px - 1400px) - base design 💻 */
 @media screen and (min-width: 901px) and (max-width: 1400px) {
-    /* Current design = base, no overrides needed */
+    /* Base design — only fix potential overflow */
+    #tableContentArea { overflow-x: auto; }
+    .mail-box-body { max-height: 480px; }
 }
 
-/* 🖥️ ➡️ Large Desktop / TV (> 1400px) 🖥️ */
-@media screen and (min-width: 1401px) {
-    body { font-size: 15px; }
-    .main-title { font-size: 28px !important; }
-    #table { font-size: 14px; }
-    th, td { padding: 10px 14px; }
-    .category-badge, .urgent-badge { font-size: 13px; padding: 5px 14px; }
-    .mail-box { min-width: 480px; }
-    .search-input { font-size: 15px; }
-    .watermark-icon { width: 62px !important; height: 62px !important; }
-}
-
-/* 📽️ ➡️ Projector / Presentation (> 1920px or print-like) 📽️ */
-@media screen and (min-width: 1921px) {
-    body { font-size: 16px; }
-    .main-title { font-size: 36px !important; letter-spacing: 1px; }
-    #table { font-size: 16px; }
-    th { font-size: 15px; padding: 14px 18px; }
-    td { font-size: 14px; padding: 12px 16px; }
-    .category-badge, .urgent-badge { font-size: 14px; padding: 6px 16px; border-radius: 22px; }
-    .mail-box { min-width: 560px; font-size: 15px; line-height: 1.9; }
-    .mail-time-bubble { font-size: 13px; padding: 5px 14px; }
-    .preview td { font-size: 16px !important; line-height: 2; }
-    .watermark-icon { width: 72px !important; height: 72px !important; }
-    .search-input { font-size: 17px; padding: 12px 20px; }
-    /* Higher contrast for projector */
-    td, th { border-color: rgba(46,125,50,0.35) !important; }
-    .category-badge { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
-}
 
 /* 🖨️ ➡️ Print / PDF export 🖨️ */
 @media print {
@@ -3357,4 +3421,10 @@ body.side-panel-open .row-inline-actions { gap: 2px; }
 body.dark-mode #mailBoxContent,
 body.dark-mode #mailBoxContent * {
     color: #e0e0e0 !important;
+}
+
+#mailBoxContent {
+    will-change: transform;
+    transform: translate3d(0,0,0);
+    backface-visibility: hidden;
 }
