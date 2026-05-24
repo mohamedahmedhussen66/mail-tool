@@ -18,6 +18,7 @@ let userFavorites = []; // Will be loaded per-user after login
 let userPinned = []; // Will be loaded per-user after login
 let userDeleted = JSON.parse(localStorage.getItem('userDeleted') || '[]'); // Personal Trash
 let readMails = JSON.parse(localStorage.getItem('readMails') || '[]'); // Read status tracking
+let userDocId = null; // Firestore user document ID for live sync
 let searchHistory = JSON.parse(localStorage.getItem('hdbSearchHistory') || '[]');
 // ✅ FIX #15: Helper to get user-scoped localStorage keys
 function getUserFavKey()  { return `userFavs_${currentUser && currentUser.username ? currentUser.username : 'guest'}`; }
@@ -174,14 +175,50 @@ document.addEventListener("DOMContentLoaded", function () {
             setInterval(updateUserHeartbeat, 3 * 60 * 1000); // Every 3 minutes
         }
 
-        // ── 1. Session Kill Listener ──────────────────────────────────
+        // ── 1. Session Kill Listener & Live Read Sync ──────────────────
         db.collection('users').where('username', '==', currentUser.username).onSnapshot(snap => {
             if (snap.empty) {
                 sessionStorage.removeItem('hdbUser');
                 document.body.innerHTML = "<h2 style='text-align:center;margin-top:50px;font-family:sans-serif;'>Session Ended. You have been removed.</h2>";
                 setTimeout(() => window.location.reload(), 2000);
             } else {
+                userDocId = snap.docs[0].id;
                 const userData = snap.docs[0].data();
+
+                // Read Status Live Sync from Firestore (syncs across browsers/devices!)
+                let needsRefresh = false;
+
+                if (userData.readMails && Array.isArray(userData.readMails)) {
+                    if (JSON.stringify(readMails) !== JSON.stringify(userData.readMails)) {
+                        readMails = userData.readMails;
+                        localStorage.setItem('readMails', JSON.stringify(readMails));
+                        needsRefresh = true;
+                    }
+                }
+
+                if (userData.agentMailVersions && typeof userData.agentMailVersions === 'object') {
+                    const localVersions = JSON.parse(localStorage.getItem('agentMailVersions') || '{}');
+                    if (JSON.stringify(localVersions) !== JSON.stringify(userData.agentMailVersions)) {
+                        localStorage.setItem('agentMailVersions', JSON.stringify(userData.agentMailVersions));
+                        needsRefresh = true;
+                    }
+                }
+
+                if (userData.adminReadMails && Array.isArray(userData.adminReadMails)) {
+                    const localAdminRead = JSON.parse(localStorage.getItem('adminReadMails') || '[]');
+                    if (JSON.stringify(localAdminRead) !== JSON.stringify(userData.adminReadMails)) {
+                        localStorage.setItem('adminReadMails', JSON.stringify(userData.adminReadMails));
+                        needsRefresh = true;
+                    }
+                }
+
+                if (needsRefresh) {
+                    try {
+                        updateBadgeCount();
+                        refreshDisplay();
+                    } catch (e) { console.warn("Live read sync render failed", e); }
+                }
+
                 if (userData.forceLogout) {
                     // Password changed by admin, force logout immediately
                     db.collection('users').doc(snap.docs[0].id).update({ forceLogout: firebase.firestore.FieldValue.delete() });
@@ -392,6 +429,7 @@ function togglePasswordVisibility() {
 window.addEventListener('DOMContentLoaded', () => {
     loadSavedAccounts();
     initCardTilt();
+    try { initWatermarkHoverHandlers(); } catch(e) {}
 
     // Auto-fill latest account
     const savedAccounts = JSON.parse(localStorage.getItem('hdb_accounts') || '[]');
@@ -1352,13 +1390,19 @@ function renderTable(data) {
                 }, 100);
             }
 
-            // ⭐ وضع علامة مقروء بشكل منفصل للأدمن والايجنت عشان المراجعة على نفس الجهاز
+            // ⭐ وضع علامة مقروء بشكل منفصل للأدمن والايجنت عشان المراجعة على نفس الجهاز (مع المزامنة الحية للداتابيز)
             if (isAdminSession) {
                 let adminRead = JSON.parse(localStorage.getItem('adminReadMails') || '[]');
                 if (!adminRead.includes(m.id)) {
                     adminRead.push(m.id);
                     localStorage.setItem('adminReadMails', JSON.stringify(adminRead));
                     row.classList.remove("unread-row");
+
+                    if (typeof userDocId !== 'undefined' && userDocId) {
+                        db.collection('users').doc(userDocId).update({
+                            adminReadMails: adminRead
+                        }).catch(e => console.warn("Firestore sync failed:", e));
+                    }
                 }
             } else {
                 let currentVersions = JSON.parse(localStorage.getItem('agentMailVersions') || '{}');
@@ -1369,6 +1413,13 @@ function renderTable(data) {
                     if (!readMails.includes(m.id)) {
                         readMails.push(m.id);
                         localStorage.setItem('readMails', JSON.stringify(readMails));
+                    }
+
+                    if (typeof userDocId !== 'undefined' && userDocId) {
+                        db.collection('users').doc(userDocId).update({
+                            readMails: readMails,
+                            agentMailVersions: currentVersions
+                        }).catch(e => console.warn("Firestore sync failed:", e));
                     }
 
                     updateBadgeCount();
@@ -2149,9 +2200,7 @@ function setupImageClickControls(editorEl) {
 
     function showRow(img) {
         _selectedImg = img;
-        img.style.outline = '2.5px solid #2ecc71';
-        img.style.outlineOffset = '3px';
-        img.style.transition = 'outline .15s ease, box-shadow .2s ease';
+        activeResizingImage = img;
         // Sync active states for toggle buttons
         _syncToggleButtons(img);
         // Show dimensions
@@ -2160,13 +2209,12 @@ function setupImageClickControls(editorEl) {
     }
 
     function hideRow() {
-        if (_selectedImg) {
-            _selectedImg.style.outline = '';
-            _selectedImg.style.outlineOffset = '';
-            _selectedImg.style.transition = '';
-        }
         _selectedImg = null;
+        activeResizingImage = null;
         row.style.display = 'none';
+        if (typeof hideResizerOverlay === 'function') {
+            hideResizerOverlay();
+        }
     }
 
     function _updateDim() {
@@ -2202,7 +2250,6 @@ function setupImageClickControls(editorEl) {
         const cmd = e.target.closest('[data-cmd]')?.dataset.cmd;
         if (!cmd || !_selectedImg) return;
         const img = _selectedImg;
-        const wrapper = img.closest('.hdb-img-wrapper');
 
         switch(cmd) {
             // ── Alignment ────────────────────────────────────────
@@ -2210,31 +2257,16 @@ function setupImageClickControls(editorEl) {
                 img.style.float = 'left';
                 img.style.margin = '0 18px 10px 0';
                 img.style.display = 'block';
-                if (wrapper) {
-                    wrapper.style.float = 'left';
-                    wrapper.style.margin = '0 18px 10px 0';
-                    wrapper.style.display = 'block';
-                }
                 break;
             case 'float-right':
                 img.style.float = 'right';
                 img.style.margin = '0 0 10px 18px';
                 img.style.display = 'block';
-                if (wrapper) {
-                    wrapper.style.float = 'right';
-                    wrapper.style.margin = '0 0 10px 18px';
-                    wrapper.style.display = 'block';
-                }
                 break;
             case 'center':
                 img.style.float = 'none';
                 img.style.display = 'block';
                 img.style.margin = '15px auto';
-                if (wrapper) {
-                    wrapper.style.float = 'none';
-                    wrapper.style.display = 'block';
-                    wrapper.style.margin = '15px auto';
-                }
                 break;
             case 'full-width':
                 img.style.width = '100%';
@@ -2242,32 +2274,21 @@ function setupImageClickControls(editorEl) {
                 img.style.float = 'none';
                 img.style.display = 'block';
                 img.style.margin = '15px 0';
-                if (wrapper) {
-                    wrapper.style.width = '100%';
-                    wrapper.style.height = 'auto';
-                    wrapper.style.float = 'none';
-                    wrapper.style.display = 'block';
-                    wrapper.style.margin = '15px 0';
-                }
                 break;
             // ── Sizes ─────────────────────────────────────────────
             case 'size-small':
                 img.style.width = '200px'; img.style.height = 'auto';
-                if (wrapper) { wrapper.style.width = '200px'; wrapper.style.height = 'auto'; }
                 break;
             case 'size-medium':
                 img.style.width = '400px'; img.style.height = 'auto';
-                if (wrapper) { wrapper.style.width = '400px'; wrapper.style.height = 'auto'; }
                 break;
             case 'size-large':
                 img.style.width = '700px'; img.style.height = 'auto';
-                if (wrapper) { wrapper.style.width = '700px'; wrapper.style.height = 'auto'; }
                 break;
             case 'size-original':
                 img.style.width = ''; img.style.height = '';
-                if (wrapper) { wrapper.style.width = ''; wrapper.style.height = ''; }
                 break;
-            // ── Toggle Styles ──────────────────────────────────────
+            // ── Style toggles ─────────────────────────────────────
             case 'toggle-rounded':
                 img.style.borderRadius = img.style.borderRadius && img.style.borderRadius !== '50%' ? '' : '12px';
                 break;
@@ -2275,37 +2296,14 @@ function setupImageClickControls(editorEl) {
                 img.style.boxShadow = img.style.boxShadow ? '' : '0 10px 32px rgba(0,0,0,0.18)';
                 break;
             case 'toggle-border':
-                if (img.style.borderWidth) {
-                    img.style.border = '';
-                } else {
-                    img.style.border = '2px solid #27ae60';
-                    img.style.borderRadius = img.style.borderRadius || '6px';
-                }
+                if (img.style.borderWidth) img.style.border = '';
+                else { img.style.border = '2px solid #27ae60'; img.style.borderRadius = img.style.borderRadius || '6px'; }
                 break;
             case 'toggle-opacity':
                 img.style.opacity = (img.style.opacity && img.style.opacity !== '1') ? '1' : '0.65';
                 break;
             // ── Actions ───────────────────────────────────────────
-            case 'reset-style':
-                const savedCursor = 'grab';
-                img.removeAttribute('style');
-                img.style.maxWidth = '100%';
-                img.style.cursor = savedCursor;
-                if (wrapper) {
-                    wrapper.removeAttribute('style');
-                    wrapper.style.position = 'relative';
-                    wrapper.style.display = 'inline-block';
-                }
-                break;
-            case 'duplicate-img': {
-                const clone = img.cloneNode(true);
-                clone.style.cursor = 'grab';
-                img.parentNode.insertBefore(clone, img.nextSibling);
-                if (typeof showToast === 'function') showToast('Image duplicated ✅', 'success');
-                break;
-            }
             case 'add-caption': {
-                // If already in figure, edit existing caption
                 const existingFig = img.closest('figure');
                 if (existingFig) {
                     const existingCap = existingFig.querySelector('figcaption');
@@ -2313,358 +2311,75 @@ function setupImageClickControls(editorEl) {
                     if (newCap !== null) {
                         if (existingCap) existingCap.textContent = newCap;
                         else {
-                            const fc2 = document.createElement('figcaption');
-                            fc2.style.cssText = 'font-size:13px;color:#7f8c8d;margin-top:8px;font-style:italic;text-align:center';
-                            fc2.textContent = newCap;
-                            existingFig.appendChild(fc2);
+                            const fc = document.createElement('figcaption');
+                            fc.style.cssText = 'text-align:center;font-size:13px;color:#7f8c8d;margin-top:6px;font-style:italic;font-family:Poppins,sans-serif';
+                            fc.textContent = newCap;
+                            existingFig.appendChild(fc);
                         }
                     }
                 } else {
-                    const cap = prompt('Enter image caption:');
-                    if (cap) {
+                    const newCap = prompt('Add caption:', '');
+                    if (newCap !== null) {
                         const fig = document.createElement('figure');
-                        fig.style.cssText = 'display:block;margin:15px auto;text-align:center;max-width:100%;clear:both';
+                        fig.style.cssText = 'display:inline-block;margin:15px auto;text-align:center;max-width:100%';
                         img.parentNode.insertBefore(fig, img);
                         fig.appendChild(img);
                         const fc = document.createElement('figcaption');
-                        fc.style.cssText = 'font-size:13px;color:#7f8c8d;margin-top:8px;font-style:italic;text-align:center';
-                        fc.textContent = cap;
+                        fc.style.cssText = 'text-align:center;font-size:13px;color:#7f8c8d;margin-top:6px;font-style:italic;font-family:Poppins,sans-serif';
+                        fc.textContent = newCap;
                         fig.appendChild(fc);
                     }
                 }
                 break;
             }
-            case 'delete-img':
+            case 'duplicate-img': {
+                const clone = img.cloneNode(true);
+                img.parentNode.insertBefore(clone, img.nextSibling);
+                if (typeof showToast === 'function') showToast('Image cloned ✅', 'success');
+                break;
+            }
+            case 'reset-style': {
+                img.removeAttribute('style');
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                if (typeof showToast === 'function') showToast('Image styles reset ✅', 'success');
+                break;
+            }
+            case 'delete-img': {
                 if (confirm('Delete this image?')) {
-                    const wrapperEl = img.closest('figure') || img;
-                    wrapperEl.remove();
+                    const fig = img.closest('figure');
+                    if (fig) fig.remove();
+                    else img.remove();
                     hideRow();
-                    
-                    // Notify Jodit of change
-                    if (typeof joditEditor !== 'undefined' && joditEditor) {
-                        joditEditor.events.fire('change');
-                    }
-                    return;
+                    if (typeof showToast === 'function') showToast('Image deleted ✅', 'info');
                 }
                 break;
-        }
-        _syncToggleButtons(img);
-
-        // Update dimension display after commands
-        _updateDim();
-        img.style.outline = '2.5px solid #2ecc71';
-        img.style.outlineOffset = '3px';
-
-        // Notify Jodit of change
-        if (typeof joditEditor !== 'undefined' && joditEditor) {
-            joditEditor.events.fire('change');
-        }
-    });
-
-    // Escape key clears selection
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape' && _selectedImg) hideRow();
-    });
-
-    // Hide row when clicking outside editor
-    document.addEventListener('click', e => {
-        if (!editorEl.contains(e.target) &&
-            !row.contains(e.target) &&
-            !e.target.closest('.hdb-resize-handle') &&
-            !e.target.closest('#hdb-img-resizer')) {
-            hideRow();
-        }
-    });
-}
-
-
-// ============================================================
-//  🔲  IMAGE RESIZE — Inline wrapper handles (scroll-safe, like Word)
-// ============================================================
-function setupImageResizer() {
-    if (!document.getElementById('hdb-resize-style')) {
-        const s = document.createElement('style');
-        s.id = 'hdb-resize-style';
-        s.textContent = [
-            // Wrapper
-            '.hdb-img-wrapper{position:relative;display:inline-block;line-height:0;vertical-align:bottom;',
-            'outline:2px solid #2ecc71;outline-offset:2px;cursor:default;transition:outline .15s ease}',
-            '.hdb-img-wrapper img{display:block;-webkit-user-drag:none;user-select:none}',
-            // Corner handles — round squares
-            '.hdb-resize-handle{position:absolute;z-index:10000;box-sizing:border-box;',
-            'background:#fff;border:2px solid #2ecc71;border-radius:3px;',
-            'transition:background .15s ease,transform .1s ease}',
-            '.hdb-resize-handle:hover{background:#2ecc71;transform:scale(1.3)}',
-            // Corner handles: 10×10
-            '.hdb-rh-corner{width:10px;height:10px}',
-            // Side handles: pill shape
-            '.hdb-rh-side-ns{width:20px;height:6px;border-radius:3px}',
-            '.hdb-rh-side-ew{width:6px;height:20px;border-radius:3px}',
-            // Live tooltip
-            '#hdb-resize-tip{position:fixed;z-index:999999;pointer-events:none;',
-            'padding:4px 10px;background:rgba(0,0,0,0.75);color:#fff;border-radius:6px;',
-            'font-size:11px;font-family:Poppins,sans-serif;font-weight:600;white-space:nowrap;',
-            'opacity:0;transition:opacity .15s ease;box-shadow:0 4px 12px rgba(0,0,0,0.3)}',
-            '#hdb-resize-tip.visible{opacity:1}'
-        ].join('');
-        document.head.appendChild(s);
-    }
-
-    // Live resize tooltip
-    let _tip = document.getElementById('hdb-resize-tip');
-    if (!_tip) {
-        _tip = document.createElement('div');
-        _tip.id = 'hdb-resize-tip';
-        document.body.appendChild(_tip);
-    }
-
-    let _wrapper = null;
-
-    const HANDLES = [
-        // Corners
-        { pos:'nw', cls:'hdb-rh-corner', style:'top:-5px;left:-5px;',                    cursor:'nw-resize' },
-        { pos:'ne', cls:'hdb-rh-corner', style:'top:-5px;right:-5px;',                   cursor:'ne-resize' },
-        { pos:'se', cls:'hdb-rh-corner', style:'bottom:-5px;right:-5px;',                cursor:'se-resize' },
-        { pos:'sw', cls:'hdb-rh-corner', style:'bottom:-5px;left:-5px;',                 cursor:'sw-resize' },
-        // Sides
-        { pos:'n',  cls:'hdb-rh-side-ns', style:'top:-3px;left:calc(50% - 10px);',      cursor:'n-resize'  },
-        { pos:'s',  cls:'hdb-rh-side-ns', style:'bottom:-3px;left:calc(50% - 10px);',   cursor:'s-resize'  },
-        { pos:'e',  cls:'hdb-rh-side-ew', style:'right:-3px;top:calc(50% - 10px);',     cursor:'e-resize'  },
-        { pos:'w',  cls:'hdb-rh-side-ew', style:'left:-3px;top:calc(50% - 10px);',      cursor:'w-resize'  },
-    ];
-
-    function wrapImg(img) {
-        if (img.parentElement && img.parentElement.classList.contains('hdb-img-wrapper')) {
-            return img.parentElement;
-        }
-        const wrap = document.createElement('span');
-        wrap.className = 'hdb-img-wrapper';
-        
-        // Transfer positioning and layout styling from image to wrapper span
-        wrap.style.left = img.style.left;
-        wrap.style.top = img.style.top;
-        wrap.style.position = img.style.position || 'relative';
-        wrap.style.float = img.style.float;
-        wrap.style.margin = img.style.margin;
-        wrap.style.display = img.style.display || 'inline-block';
-        wrap.style.verticalAlign = img.style.verticalAlign || 'bottom';
-        wrap.style.width = img.style.width;
-        wrap.style.height = img.style.height;
-
-        // Clear layout styles on the image while wrapped to avoid double styling
-        img.style.left = '';
-        img.style.top = '';
-        img.style.position = '';
-        img.style.float = '';
-        img.style.margin = '';
-
-        img.parentNode.insertBefore(wrap, img);
-        wrap.appendChild(img);
-        HANDLES.forEach(h => {
-            const el = document.createElement('div');
-            el.className = 'hdb-resize-handle ' + h.cls;
-            el.dataset.pos = h.pos;
-            el.style.cssText = h.style + 'cursor:' + h.cursor + ';';
-            el.addEventListener('mousedown', onHandleDown);
-            wrap.appendChild(el);
-        });
-        return wrap;
-    }
-
-    function unwrapImg(wrap) {
-        if (!wrap) return;
-        const img = wrap.querySelector('img');
-        if (img) {
-            // Restore positioning, layout, and size styles back to the image
-            img.style.left = wrap.style.left;
-            img.style.top = wrap.style.top;
-            img.style.position = wrap.style.position;
-            img.style.float = wrap.style.float;
-            img.style.margin = wrap.style.margin;
-            img.style.display = wrap.style.display === 'inline-block' ? '' : wrap.style.display;
-            img.style.verticalAlign = wrap.style.verticalAlign;
-            
-            // Clean selection outlines
-            img.style.outline = '';
-            img.style.outlineOffset = '';
-            img.style.transition = '';
-
-            if (wrap.parentNode) wrap.parentNode.insertBefore(img, wrap);
-        }
-        wrap.remove();
-        _wrapper = null;
-        
-        // Notify Jodit of change
-        if (typeof joditEditor !== 'undefined' && joditEditor) {
-            joditEditor.events.fire('change');
-        }
-    }
-
-    document.addEventListener('click', e => {
-        if (e.target.tagName === 'IMG' && e.target.closest('.jodit-wysiwyg')) {
-            if (_wrapper && _wrapper !== e.target.parentElement) { unwrapImg(_wrapper); }
-            _wrapper = wrapImg(e.target);
-            // Update dim badge in toolbar
-            const dimEl = document.getElementById('hdb-img-dimensions');
-            if (dimEl) {
-                const r = e.target.getBoundingClientRect();
-                dimEl.textContent = Math.round(r.width) + ' \u00d7 ' + Math.round(r.height);
             }
-        } else if (!e.target.closest('.hdb-img-wrapper') && !e.target.closest('#hdb-img-toolbar-row')) {
-            unwrapImg(_wrapper);
-        }
-    }, true);
-
-    // ── Resize logic ────────────────────────────────────────────
-    const MIN_SIZE = 40, MAX_SIZE = 2000;
-    let _img, _pos, _startX, _startY, _startW, _startH, _ratio, _lockRatio, _fromCenter;
-
-    function onHandleDown(e) {
-        e.preventDefault(); e.stopPropagation();
-        const wrap = e.currentTarget.closest('.hdb-img-wrapper');
-        _img     = wrap.querySelector('img');
-        _pos     = e.currentTarget.dataset.pos;
-        _startX  = e.clientX; _startY = e.clientY;
-        _startW  = _img.offsetWidth; _startH = _img.offsetHeight;
-        _ratio   = _startW / (_startH || 1);
-        _lockRatio   = !e.shiftKey;  // Default: locked. Shift = free resize.
-        _fromCenter  = e.altKey;
-
-        document.body.style.userSelect = 'none';
-        document.body.style.cursor = e.currentTarget.style.cursor;
-        document.addEventListener('mousemove', onResizeMove);
-        document.addEventListener('mouseup',   onResizeUp);
-    }
-
-    function onResizeMove(e) {
-        if (!_img) return;
-        _lockRatio  = !e.shiftKey;
-        _fromCenter = e.altKey;
-
-        let w = _startW + (e.clientX - _startX) * (_fromCenter ? 2 : 1) * (_pos.includes('w') ? -1 : 1);
-        let h = _startH + (e.clientY - _startY) * (_fromCenter ? 2 : 1) * (_pos.includes('n') ? -1 : 1);
-
-        if (_lockRatio) {
-            if (_pos.includes('n') || _pos.includes('s')) w = h * _ratio;
-            else h = w / _ratio;
         }
 
-        w = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(w)));
-        h = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(h)));
-
-        if (_fromCenter) {
-            w = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(_startW + (w - _startW) * 2)));
-            h = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(_startH + (h - _startH) * 2)));
-        }
-
-        _img.style.width  = w + 'px';
-        _img.style.height = h + 'px';
-        
-        const wrap = _img.closest('.hdb-img-wrapper');
-        if (wrap) {
-            wrap.style.width = w + 'px';
-            wrap.style.height = h + 'px';
-        }
-
-        const dimEl = document.getElementById('hdb-img-dimensions');
-        if (dimEl) dimEl.textContent = w + ' \u00d7 ' + h;
-
-        _tip.textContent = w + ' \u00d7 ' + h + 'px' + (_lockRatio ? ' \ud83d\udd12' : ' \ud83d\udd13');
-        _tip.style.left  = (e.clientX + 16) + 'px';
-        _tip.style.top   = (e.clientY - 28) + 'px';
-        _tip.classList.add('visible');
-    }
-
-    function onResizeUp() {
-        _img = null;
-        _tip.classList.remove('visible');
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        document.removeEventListener('mousemove', onResizeMove);
-        document.removeEventListener('mouseup',   onResizeUp);
-
-        // Notify Jodit of change
+        // Notify Jodit of change after any command
         if (typeof joditEditor !== 'undefined' && joditEditor) {
             joditEditor.events.fire('change');
         }
-    }
-
-    document.addEventListener('keydown', e => {
-        if (!_wrapper) return;
-        const img = _wrapper.querySelector('img');
-        if (!img) return;
-        const isArrow = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key);
-        if (!isArrow) return;
-        const inEditor = e.target.closest('.jodit-wysiwyg') || e.target.closest('.hdb-img-wrapper');
-        if (!inEditor) return;
-        e.preventDefault();
-        const step = e.shiftKey ? 10 : 1;
-        const w = img.offsetWidth, h = img.offsetHeight;
-        const ratio = w / (h || 1);
-        
-        let nw = w, nh = h;
-        if (e.key === 'ArrowRight') { nw = Math.min(MAX_SIZE, w + step); nh = Math.round(nw/ratio); }
-        if (e.key === 'ArrowLeft')  { nw = Math.max(MIN_SIZE, w - step); nh = Math.round(nw/ratio); }
-        if (e.key === 'ArrowDown')  { nh = Math.min(MAX_SIZE, h + step); nw = Math.round(nh*ratio); }
-        if (e.key === 'ArrowUp')    { nh = Math.max(MIN_SIZE, h - step); nw = Math.round(nh*ratio); }
-        
-        img.style.width = nw + 'px';
-        img.style.height = nh + 'px';
-        _wrapper.style.width = nw + 'px';
-        _wrapper.style.height = nh + 'px';
-
-        const dimEl = document.getElementById('hdb-img-dimensions');
-        if (dimEl) { const r = img.getBoundingClientRect(); dimEl.textContent = Math.round(r.width) + ' \u00d7 ' + Math.round(r.height); }
-
-        // Notify Jodit of change
-        if (typeof joditEditor !== 'undefined' && joditEditor) {
-            joditEditor.events.fire('change');
-        }
+        _updateDim();
+        _syncToggleButtons(img);
     });
-}
 
-// ============================================================
-//  ✋  IMAGE DRAG & DROP — Free Margin-Based Movement
-// ============================================================
-function enableImageDragDrop(editorEl) {
-    if (!editorEl) return;
-
-    let _dragImg    = null;
-    let _wrapper    = null;
+    // ── Free-drag images inside Jodit ─────────────────────────
     let _isDragging = false;
-    let _startX, _startY;
-    let _startMarginLeft, _startMarginTop;
-
-    // Prevent native HTML5 drag so our custom mousemove dragging works
-    editorEl.addEventListener('dragstart', e => {
-        if (e.target.tagName === 'IMG' || e.target.closest('.hdb-img-wrapper')) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-        }
-    }, true);
+    let _startX = 0, _startY = 0, _startLeft = 0, _startTop = 0;
 
     editorEl.addEventListener('mousedown', e => {
-        if (e.target.tagName !== 'IMG') return;
-        if (e.button !== 0) return;
-        // Don't start drag if on a resize handle
-        if (e.target.closest('.hdb-resize-handle')) return;
+        if (!e.target || e.target.tagName !== 'IMG') return;
 
-        // CRITICAL: Prevent default to stop native drag and text selection from killing mousemove events
-        e.preventDefault();
-        e.stopImmediatePropagation();
-
-        _dragImg = e.target;
-        _wrapper = _dragImg.closest('.hdb-img-wrapper');
-        
-        // If wrapped, we move the wrapper. If not, we move the image.
-        const targetEl = _wrapper || _dragImg;
-        if (targetEl && !targetEl.style.position) {
+        const targetEl = e.target;
+        if (!targetEl.style.position || targetEl.style.position === 'static') {
             targetEl.style.position = 'relative';
         }
 
+        _isDragging = false;
         _startX  = e.clientX;
         _startY  = e.clientY;
-        
         _startLeft = parseInt(targetEl.style.left) || 0;
         _startTop  = parseInt(targetEl.style.top) || 0;
 
@@ -2687,14 +2402,14 @@ function enableImageDragDrop(editorEl) {
             targetEl.style.top  = (_startTop + dy) + 'px';
         };
 
-        const onUp = ev => {
+        const onUp = () => {
             doc.removeEventListener('mousemove', onMove, true);
             doc.removeEventListener('mouseup',   onUp, true);
             doc.body.style.userSelect = '';
 
             if (_isDragging && targetEl) {
-                targetEl.style.cursor = 'default';
-                if (typeof showToast === 'function') showToast('Image moved freely \u2705', 'success');
+                targetEl.style.cursor = 'grab';
+                if (typeof showToast === 'function') showToast('Image repositioned ✅', 'success');
                 
                 // Notify Jodit of change
                 if (typeof joditEditor !== 'undefined' && joditEditor) {
@@ -2703,8 +2418,6 @@ function enableImageDragDrop(editorEl) {
             }
 
             _isDragging = false;
-            _dragImg    = null;
-            _wrapper    = null;
         };
 
         doc.addEventListener('mousemove', onMove, true);
@@ -3173,11 +2886,8 @@ document.addEventListener("DOMContentLoaded", function () {
                     // ✅ Setup image click controls (header toolbar row)
                     try { setupImageClickControls(joditEditor.editor); } catch(e) {}
 
-                    // ✅ Setup image resize handles (8-point, premium pill/round handles)
-                    try { setupImageResizer(); } catch(e) {}
-
-                    // ✅ Enable drag & drop image repositioning (within editor)
-                    try { enableImageDragDrop(joditEditor.editor); } catch(e) {}
+                    // ✅ Enable premium overlay image resizer & drag-drop (bug-free, no DOM pollution)
+                    try { setupImageOverlayResizer(joditEditor.editor); } catch(e) {}
 
                     // ✅ Enable desktop file drag-into-editor with overlay + progress
                     try { setupEditorDropZone(joditEditor.editor); } catch(e) {}
@@ -4008,13 +3718,22 @@ function updateFilterIcon(field) {
     }
 }
 
-// Global click-to-close for dropdowns
+// Global click-to-close for dropdowns and watermark menu
 window.addEventListener('click', (e) => {
     if (!e.target.closest('.dropdown')) {
         document.querySelectorAll(".dropdown-content").forEach(d => d.classList.remove("show"));
     }
+    if (!e.target.closest('.watermark-button-container')) {
+        closeWatermarkMenu();
+    }
 });
-function toggleWatermarkMenu() {
+
+let watermarkTimeoutId = null;
+
+function toggleWatermarkMenu(e) {
+    if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+    }
     const menu = document.getElementById("watermarkMenu");
     const icon = document.querySelector(".watermark-icon");
 
@@ -4023,11 +3742,24 @@ function toggleWatermarkMenu() {
         return;
     }
 
-    menu.classList.toggle("show");
+    const isShowing = menu.classList.contains("show");
 
-    // Add rotation effect to icon
-    if (icon) {
-        icon.classList.toggle("rotate");
+    if (watermarkTimeoutId) {
+        clearTimeout(watermarkTimeoutId);
+        watermarkTimeoutId = null;
+    }
+
+    if (isShowing) {
+        closeWatermarkMenu();
+    } else {
+        menu.classList.add("show");
+        if (icon) {
+            icon.classList.add("rotate");
+        }
+        // Start 5-second auto-close timer
+        watermarkTimeoutId = setTimeout(() => {
+            closeWatermarkMenu();
+        }, 5000);
     }
 }
 
@@ -4037,6 +3769,32 @@ function closeWatermarkMenu() {
 
     if (menu) menu.classList.remove("show");
     if (icon) icon.classList.remove("rotate");
+
+    if (watermarkTimeoutId) {
+        clearTimeout(watermarkTimeoutId);
+        watermarkTimeoutId = null;
+    }
+}
+
+function initWatermarkHoverHandlers() {
+    const menu = document.getElementById("watermarkMenu");
+    if (!menu) return;
+
+    menu.addEventListener('mouseenter', () => {
+        if (watermarkTimeoutId) {
+            clearTimeout(watermarkTimeoutId);
+            watermarkTimeoutId = null;
+        }
+    });
+
+    menu.addEventListener('mouseleave', () => {
+        if (menu.classList.contains('show')) {
+            if (watermarkTimeoutId) clearTimeout(watermarkTimeoutId);
+            watermarkTimeoutId = setTimeout(() => {
+                closeWatermarkMenu();
+            }, 5000);
+        }
+    });
 }
 
 function syncWatermarkMenuByRole() {

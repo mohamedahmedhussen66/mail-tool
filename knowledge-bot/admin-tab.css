@@ -1,0 +1,321 @@
+/* AI Knowledge Bot Dashboard Styling */
+
+.bot-admin-container {
+    animation: fadeIn 0.4s ease-out;
+    padding: 10px 0;
+}
+
+.bot-admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 20px;
+}
+
+@media (max-width: 992px) {
+    .bot-admin-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.bot-card-title {
+    color: var(--primary, #2ecc71);
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.bot-card-desc {
+    color: var(--text-muted, #94a3b8);
+    font-size: 12px;
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+/* Drag & Drop Area */
+.bot-drag-drop {
+    border: 2px dashed rgba(46, 204, 113, 0.3);
+    border-radius: 12px;
+    padding: 35px 20px;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.bot-drag-drop:hover, .bot-drag-drop.dragover {
+    border-color: var(--primary, #2ecc71);
+    background: rgba(46, 204, 113, 0.05);
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.1);
+}
+
+.bot-upload-icon {
+    font-size: 32px;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.bot-drag-text {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.bot-browse-btn {
+    color: var(--primary, #2ecc71);
+    text-decoration: underline;
+}
+
+.bot-file-specs {
+    font-size: 11px;
+    color: var(--text-muted, #94a3b8);
+}
+
+/* Forms */
+.bot-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.bot-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.bot-form-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted, #94a3b8);
+}
+
+.bot-form-group input, .bot-form-group textarea {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    transition: border-color 0.2s;
+    outline: none;
+}
+
+.bot-form-group textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.bot-form-group input:focus, .bot-form-group textarea:focus {
+    border-color: var(--primary, #2ecc71);
+}
+
+.bot-btn-submit {
+    background: var(--primary, #2ecc71);
+    color: #0b1611;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.1s, filter 0.2s;
+}
+
+.bot-btn-submit:hover {
+    filter: brightness(1.1);
+}
+
+.bot-btn-submit:active {
+    transform: scale(0.98);
+}
+
+/* Active Sources Table */
+.bot-table-container {
+    overflow-x: auto;
+    max-height: 250px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.bot-sources-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+
+.bot-sources-table th, .bot-sources-table td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bot-sources-table th {
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--text-muted, #94a3b8);
+    font-weight: 600;
+}
+
+.bot-sources-table tbody tr {
+    background: rgba(255, 255, 255, 0.01);
+}
+
+.bot-sources-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.bot-td-name {
+    font-weight: 600;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Status Badges */
+.bot-status-badge {
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.bot-status-ready {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border: 1px solid rgba(46, 204, 113, 0.2);
+}
+
+.bot-status-processing {
+    background: rgba(52, 152, 219, 0.15);
+    color: #3498db;
+    border: 1px solid rgba(52, 152, 219, 0.2);
+    animation: pulseText 1.5s infinite alternate;
+}
+
+.bot-status-failed {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    border: 1px solid rgba(231, 76, 60, 0.2);
+}
+
+.bot-action-btn-del {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    border: 1px solid rgba(231, 76, 60, 0.2);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.bot-action-btn-del:hover {
+    background: #e74c3c;
+    color: #fff;
+}
+
+/* Stats */
+.bot-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.bot-stat-item {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 15px 10px;
+    text-align: center;
+}
+
+.bot-stat-val {
+    display: block;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--primary, #2ecc71);
+}
+
+.bot-stat-lbl {
+    font-size: 11px;
+    color: var(--text-muted, #94a3b8);
+    font-weight: 500;
+}
+
+/* Logs List */
+.bot-logs-list {
+    max-height: 180px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.bot-log-row {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding-bottom: 8px;
+}
+
+.bot-log-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.bot-log-user {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.bot-log-time {
+    font-size: 10px;
+    color: var(--text-muted, #94a3b8);
+}
+
+.bot-log-q {
+    margin: 4px 0;
+    font-size: 12px;
+    color: var(--text-main, #d1d5db);
+    font-family: inherit;
+    word-break: break-all;
+}
+
+.log-lbl-answered, .log-lbl-fallback {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.log-lbl-answered {
+    background: rgba(46, 204, 113, 0.1);
+    color: #2ecc71;
+}
+
+.log-lbl-fallback {
+    background: rgba(241, 196, 15, 0.1);
+    color: #f1c40f;
+}
+
+@keyframes pulseText {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}

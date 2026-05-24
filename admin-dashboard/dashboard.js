@@ -1299,14 +1299,23 @@ function switchTab(tabId) {
 
     // Update active class on nav
     document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+    if (event && event.currentTarget) {
+        event.currentTarget.classList.add('active');
+    }
 
     // Update Page Title
-    const titleSpan = event.currentTarget.querySelector('span[data-i18n]');
-    if (titleSpan) {
-        const titleKey = titleSpan.getAttribute('data-i18n');
-        if (translations[currentLang] && translations[currentLang][titleKey]) {
-            document.getElementById('pageTitle').innerText = translations[currentLang][titleKey];
+    if (tabId === 'bot') {
+        document.getElementById('pageTitle').innerText = "🤖 Knowledge Bot Center";
+        if (typeof loadSources === "function") loadSources();
+        if (typeof loadStats === "function") loadStats();
+        if (typeof fetchAndCacheChunks === "function") fetchAndCacheChunks(true);
+    } else {
+        const titleSpan = event && event.currentTarget ? event.currentTarget.querySelector('span[data-i18n]') : null;
+        if (titleSpan) {
+            const titleKey = titleSpan.getAttribute('data-i18n');
+            if (translations[currentLang] && translations[currentLang][titleKey]) {
+                document.getElementById('pageTitle').innerText = translations[currentLang][titleKey];
+            }
         }
     }
 }
