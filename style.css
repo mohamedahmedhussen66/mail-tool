@@ -3428,3 +3428,38 @@ body.dark-mode #mailBoxContent * {
     transform: translate3d(0,0,0);
     backface-visibility: hidden;
 }
+
+/* Premium Jodit Resizer Overrides */
+.jodit-resizer, .jodit_resizer {
+    border: 2.5px solid #2ecc71 !important; /* Premium brand green border */
+    box-shadow: 0 0 14px rgba(46, 204, 113, 0.4) !important;
+    border-radius: 4px !important;
+}
+
+.jodit-resizer > div, .jodit_resizer > div {
+    background-color: #ffffff !important;
+    border: 2px solid #2ecc71 !important;
+    border-radius: 50% !important; /* Clean round handles */
+    width: 11px !important;
+    height: 11px !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25) !important;
+    transition: transform 0.15s ease, background-color 0.15s ease !important;
+}
+
+.jodit-resizer > div:hover, .jodit_resizer > div:hover {
+    background-color: #2ecc71 !important;
+    transform: scale(1.3) !important;
+}
+
+/* Size badge inside resizer */
+.jodit-resizer__size, .jodit-resizer > span, .jodit_resizer > span {
+    background-color: rgba(11, 22, 17, 0.92) !important;
+    color: #2ecc71 !important;
+    border-radius: 6px !important;
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+    font-family: Poppins, sans-serif !important;
+    font-weight: 600 !important;
+    border: 1px solid rgba(46, 204, 113, 0.35) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}

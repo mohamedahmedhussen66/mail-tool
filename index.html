@@ -13,6 +13,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jodit/3.24.6/jodit.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
     <link rel="stylesheet" href="style.css">
+    
+    <!-- AI Knowledge Bot Module -->
+    <link rel="stylesheet" href="knowledge-bot/chat-panel.css">
+    <script src="knowledge-bot/bot-config.js"></script>
+    <script src="knowledge-bot/bot-engine.js"></script>
+    <script src="knowledge-bot/chat-panel.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 </head>
@@ -470,7 +476,7 @@
     <!-- T5: Watermark button container moved here for true fixed positioning -->
     <div class="watermark-button-container">
         <img src="https://i.ibb.co/KcS08Cxn/watermark.png" class="watermark-icon"
-            onclick="toggleWatermarkMenu()">
+            onclick="toggleWatermarkMenu(event)">
         <div id="unreadBadge" class="unread-badge">0</div>
         <div id="watermarkMenu" class="watermark-menu">
             <div class="menu-item agent-menu-item item-all" onclick="showAll()">📂 All</div>

@@ -17,6 +17,19 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 
     <link rel="stylesheet" href="dashboard.css">
+
+    <!-- AI Knowledge Bot Module -->
+    <link rel="stylesheet" href="../knowledge-bot/admin-tab.css">
+    <link rel="stylesheet" href="../knowledge-bot/chat-panel.css">
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="../knowledge-bot/bot-config.js"></script>
+    <script src="../knowledge-bot/bot-engine.js"></script>
+    <script src="../knowledge-bot/admin-tab.js?v=20260526-excel-ocr-reader"></script>
+    <script src="../knowledge-bot/chat-panel.js"></script>
 </head>
 
 <body class="dark-theme">
@@ -199,6 +212,9 @@
                     <span class="icon">🗑️</span> <span>Recycle Bin</span>
                     <span
                         style="font-size:10px; background:#e74c3c; color:white; padding:2px 6px; border-radius:20px; margin-left:5px; font-weight:bold;">NEW</span>
+                </li>
+                <li onclick="switchTab('bot')">
+                    <span class="icon">🤖</span> <span>Knowledge Bot</span>
                 </li>
             </ul>
 
@@ -888,6 +904,10 @@
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- 8. KNOWLEDGE BOT section -->
+            <section id="view-bot" class="view-section" style="display:none;">
             </section>
 
         </main>
