@@ -93,7 +93,11 @@ function injectAdminTabHtml() {
                                         <button type="button" onclick="toggleApiKeyVisibility()" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:0 12px; cursor:pointer; color:white;">👁️</button>
                                     </div>
                                 </div>
-                                <div class="bot-form-group">
+                                <div class="bot-form-group" style="margin-top: 12px;">
+                                    <label for="botProxyUrl">رابط البروكسي الآمن (Proxy URL):</label>
+                                    <input type="text" id="botProxyUrl" placeholder="أدخل رابط Google Apps Script هنا..." style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:white; box-sizing:border-box;">
+                                </div>
+                                <div class="bot-form-group" style="margin-top: 12px;">
                                     <label for="botModelSelect">AI Model:</label>
                                     <select id="botModelSelect" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:white;">
                                         <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
@@ -1825,6 +1829,19 @@ async function saveChunksToDb(chunks) {
         vectorResult = await enrichChunksWithEmbeddings(chunks, (done, total) => {
             console.log(`Vector indexing ${done}/${total}`);
         });
+
+        // 🔍 تشخيص نتيجة الـ Vector Embedding بالتفصيل
+        if (vectorResult.failed || vectorResult.embeddedCount === 0) {
+            const errMsg = vectorResult.error || "لم يتم إنشاء أي vector - السبب غير معروف.";
+            console.error("❌ Vector Embedding فشل:", errMsg, vectorResult);
+            showAdminToast(
+                `⚠️ Vector فشل (${vectorResult.embeddedCount}/${chunks.length}): ${errMsg}`,
+                "error"
+            );
+        } else {
+            console.log(`✅ Vector Embedding نجح: ${vectorResult.embeddedCount}/${chunks.length} chunk`);
+            showAdminToast(`✅ Vector Index اتبنى بنجاح! (${vectorResult.embeddedCount} chunk)`, "success");
+        }
     }
 
     const chunkCollection = db.collection("knowledge_bot_chunks");
@@ -2469,8 +2486,10 @@ async function loadBotSettingsInForm() {
         if (doc.exists) {
             const data = doc.data();
             const keyInput = document.getElementById("botApiKey");
+            const proxyInput = document.getElementById("botProxyUrl");
             const modelSelect = document.getElementById("botModelSelect");
             if (keyInput && data.apiKey) keyInput.value = data.apiKey;
+            if (proxyInput && data.proxyUrl) proxyInput.value = data.proxyUrl;
             if (modelSelect && data.model) modelSelect.value = data.model;
             if (data.proxyUrl) KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL = data.proxyUrl;
         }
@@ -2481,10 +2500,11 @@ async function loadBotSettingsInForm() {
 
 window.saveBotSettings = async function() {
     const key = document.getElementById("botApiKey").value.trim();
+    const proxyUrl = document.getElementById("botProxyUrl").value.trim();
     const model = document.getElementById("botModelSelect").value;
 
-    if (!key) {
-        showAdminToast("يرجى إدخال الـ API Key أولاً!", "error");
+    if (!key && !proxyUrl) {
+        showAdminToast("يرجى إدخال الـ API Key أو رابط البروكسي (Proxy URL) أولاً!", "error");
         return;
     }
 
@@ -2492,12 +2512,13 @@ window.saveBotSettings = async function() {
     try {
         await db.collection("systemSettings").doc("knowledge_bot").set({
             apiKey: key,
-            proxyUrl: KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL || "",
+            proxyUrl: proxyUrl,
             model: model,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
 
         KNOWLEDGE_BOT_CONFIG.AI_API_KEY = key;
+        KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL = proxyUrl;
         KNOWLEDGE_BOT_CONFIG.AI_MODEL = model;
 
         showAdminToast("تم حفظ الإعدادات بنجاح ومزامنتها مع الموظفين! 🎉", "success");

@@ -13,8 +13,8 @@ async function loadBotConfiguration() {
         const doc = await db.collection("systemSettings").doc("knowledge_bot").get();
         if (doc.exists) {
             const data = doc.data();
-            if (data.apiKey) KNOWLEDGE_BOT_CONFIG.AI_API_KEY = data.apiKey;
-            if (data.proxyUrl) KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL = data.proxyUrl;
+            KNOWLEDGE_BOT_CONFIG.AI_API_KEY = data.apiKey || "";
+            KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL = data.proxyUrl || "";
             if (data.model) KNOWLEDGE_BOT_CONFIG.AI_MODEL = data.model;
             console.log("⚙️ Loaded live bot configurations from Firestore");
         }
@@ -260,11 +260,16 @@ function getEmbeddingTextForChunk(chunk) {
 
 async function callGeminiEndpoint({ model, action, payload, abortSignal }) {
     const proxyUrl = (KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL || "").trim();
+    const isScriptGoogle = proxyUrl.includes("script.google.com");
     
+    const cleanModel = (isScriptGoogle && typeof model === "string" && model.startsWith("models/"))
+        ? model.replace("models/", "")
+        : model;
+
     const requestOptions = {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(proxyUrl ? { provider: "gemini", model, action, payload } : payload)
+        headers: { "Content-Type": isScriptGoogle ? "text/plain" : "application/json" },
+        body: JSON.stringify(proxyUrl ? { provider: "gemini", model: cleanModel, action, payload } : payload)
     };
 
     // ربط الـ signal لو متوفر لإتاحة إيقاف السؤال
@@ -296,13 +301,74 @@ async function embedTexts(texts, taskType = "RETRIEVAL_DOCUMENT") {
     if (!KNOWLEDGE_BOT_CONFIG.ENABLE_VECTOR_SEARCH) return [];
     if (!KNOWLEDGE_BOT_CONFIG.AI_API_KEY && !KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL) return [];
 
-    const cleanTexts = texts.map(t => String(t || "").trim()).filter(Boolean);
+    const cleanTexts = texts
+        .map(t => String(t || "").trim().slice(0, 2500)) // تقليص النصوص الطويلة جداً عشان الـ response متكبرش
+        .filter(Boolean);
     if (cleanTexts.length === 0) return [];
 
-    const modelName = `models/${KNOWLEDGE_BOT_CONFIG.EMBEDDING_MODEL || "text-embedding-004"}`;
+    const modelName = KNOWLEDGE_BOT_CONFIG.EMBEDDING_MODEL || "text-embedding-004";
+    const usingProxy = !!(KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL || "").trim();
+
+    if (usingProxy) {
+        // ✅ لما بنشتغل على بروكسي (Apps Script) نستخدم embedContent مفرد بدل batchEmbedContents
+        // السبب: الـ Apps Script بيبني URL صح لـ embedContent (بيحط models/ تلقائياً)
+        // بس بيبني URL غلط لـ batchEmbedContents فبيرجع HTML مش JSON
+        const results = [];
+        for (const text of cleanTexts) {
+            try {
+                const payload = {
+                    model: `models/${modelName}`,
+                    content: { parts: [{ text }] },
+                    taskType
+                };
+                const response = await callGeminiEndpoint({
+                    model: modelName, // بدون models/ prefix - الـ callGeminiEndpoint هيتعامل معاه
+                    action: "embedContent",
+                    payload
+                });
+
+                if (!response.ok) {
+                    const rawErr = await response.text().catch(() => "");
+                    console.error("❌ embedContent HTTP Error:", response.status, rawErr.slice(0, 200));
+                    results.push([]);
+                    continue;
+                }
+
+                const rawText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (e) {
+                    console.error("❌ embedContent JSON parse failed. Raw:", rawText.slice(0, 300));
+                    results.push([]);
+                    continue;
+                }
+
+                if (data.error) {
+                    console.error("❌ embedContent API error:", data.error.message);
+                    results.push([]);
+                    continue;
+                }
+
+                // embedContent بيرجع { "embedding": { "values": [...] } }
+                results.push(normalizeVector(data.embedding?.values || []));
+
+                // تأخير بسيط بين الطلبات عشان مايعملش rate-limit
+                await new Promise(resolve => setTimeout(resolve, 150));
+
+            } catch (err) {
+                console.error("❌ embedContent exception:", err.message);
+                results.push([]);
+            }
+        }
+        return results;
+    }
+
+    // مباشر بدون بروكسي: نستخدم batchEmbedContents (أسرع)
+    const fullModelName = `models/${modelName}`;
     const payload = {
         requests: cleanTexts.map(text => ({
-            model: modelName,
+            model: fullModelName,
             content: { parts: [{ text }] },
             taskType
         }))
@@ -315,11 +381,25 @@ async function embedTexts(texts, taskType = "RETRIEVAL_DOCUMENT") {
     });
 
     if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData?.error?.message || `Embedding HTTP ${response.status}`);
+        const rawErr = await response.text().catch(() => "");
+        console.error("❌ Embedding HTTP Error:", response.status, rawErr.slice(0, 300));
+        throw new Error(`Embedding HTTP ${response.status}: ${rawErr.slice(0, 150)}`);
     }
 
-    const data = await response.json();
+    // معالجة آمنة للـ JSON عشان لو الـ response ناقصة أو فاضية متخليش الكل يوقف
+    const rawText = await response.text();
+    let data;
+    try {
+        data = JSON.parse(rawText);
+    } catch (parseErr) {
+        console.error("❌ Embedding JSON parse failed. Raw response:", rawText.slice(0, 500));
+        throw new Error(`Embedding response is not valid JSON. Raw: ${rawText.slice(0, 100)}`);
+    }
+
+    if (data.error) {
+        throw new Error(data.error.message || "Embedding API error");
+    }
+
     return (data.embeddings || []).map(e => normalizeVector(e.values || []));
 }
 
@@ -329,17 +409,35 @@ async function embedQueryText(text) {
 }
 
 async function enrichChunksWithEmbeddings(chunks, onProgress) {
-    if (!KNOWLEDGE_BOT_CONFIG.ENABLE_VECTOR_SEARCH || !KNOWLEDGE_BOT_CONFIG.AI_API_KEY) {
-        return { chunks, embeddedCount: 0, failed: true, error: "Vector search is disabled or API key is missing." };
+    // 🔍 تشخيص مبكر: اعرض القيم الحالية للـ config
+    const usingProxy = !!(KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL || "").trim();
+    console.log("🔍 enrichChunksWithEmbeddings - Config:", {
+        ENABLE_VECTOR_SEARCH: KNOWLEDGE_BOT_CONFIG.ENABLE_VECTOR_SEARCH,
+        AI_API_KEY: KNOWLEDGE_BOT_CONFIG.AI_API_KEY ? "✅ موجود (" + KNOWLEDGE_BOT_CONFIG.AI_API_KEY.slice(0,10) + "...)" : "❌ فاضي",
+        AI_PROXY_URL: usingProxy ? "✅ موجود (" + (KNOWLEDGE_BOT_CONFIG.AI_PROXY_URL || "").slice(0,40) + "...)" : "❌ فاضي",
+        chunks: chunks.length,
+        usingProxy
+    });
+
+    if (!KNOWLEDGE_BOT_CONFIG.ENABLE_VECTOR_SEARCH || (!KNOWLEDGE_BOT_CONFIG.AI_API_KEY && !usingProxy)) {
+        const reason = !KNOWLEDGE_BOT_CONFIG.ENABLE_VECTOR_SEARCH
+            ? "ENABLE_VECTOR_SEARCH = false"
+            : "API Key و Proxy URL كلاهما فارغَين";
+        console.error("❌ Vector disabled:", reason);
+        return { chunks, embeddedCount: 0, failed: true, error: "Vector search مش شغال. السبب: " + reason };
     }
 
-    const batchSize = KNOWLEDGE_BOT_CONFIG.EMBEDDING_BATCH_SIZE || 12;
+    // لو شغال على بروكسي نقلل الـ batch عشان الـ response متكبرش وتتقطع
+    const batchSize = usingProxy ? 3 : (KNOWLEDGE_BOT_CONFIG.EMBEDDING_BATCH_SIZE || 12);
     let embeddedCount = 0;
+    let lastError = "";
 
-    try {
-        for (let i = 0; i < chunks.length; i += batchSize) {
-            const batch = chunks.slice(i, i + batchSize);
+    for (let i = 0; i < chunks.length; i += batchSize) {
+        const batch = chunks.slice(i, i + batchSize);
+        console.log(`📦 Embedding batch ${i + 1}-${i + batch.length} of ${chunks.length} (batchSize=${batchSize})...`);
+        try {
             const vectors = await embedTexts(batch.map(getEmbeddingTextForChunk), "RETRIEVAL_DOCUMENT");
+            console.log(`📊 Got ${vectors.length} vectors back, first length: ${vectors[0]?.length || 0}`);
 
             batch.forEach((chunk, idx) => {
                 const embedding = vectors[idx] || [];
@@ -349,17 +447,25 @@ async function enrichChunksWithEmbeddings(chunks, onProgress) {
                     embeddedCount += 1;
                 }
             });
-
-            if (typeof onProgress === "function") {
-                onProgress(Math.min(chunks.length, i + batch.length), chunks.length);
-            }
+        } catch (batchErr) {
+            // لو batch واحدة فشلت، نكمل على الـ batches التانية بدل ما نوقف كل حاجة
+            lastError = batchErr.message;
+            console.error(`❌ Batch ${i + 1}-${i + batch.length} failed:`, batchErr.message);
         }
 
-        return { chunks, embeddedCount, failed: false };
-    } catch (err) {
-        console.warn("Vector embedding failed. Falling back to lexical search:", err.message);
-        return { chunks, embeddedCount, failed: true, error: err.message };
+        if (typeof onProgress === "function") {
+            onProgress(Math.min(chunks.length, i + batch.length), chunks.length);
+        }
+
+        // استنى شوية بين الـ batches عشان ما تعملش rate-limit على الـ API
+        if (i + batchSize < chunks.length) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
     }
+
+    const failed = embeddedCount === 0;
+    console.log(`✅ Embedding done: ${embeddedCount}/${chunks.length} embedded. Failed: ${failed}`);
+    return { chunks, embeddedCount, failed, error: failed ? lastError : "" };
 }
 
 // حساب سكور التطابق النصي والكلمات المفتاحية
@@ -753,7 +859,7 @@ ${contextString}
 
     const payload = {
         contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
-        generationConfig: { temperature: 0.05, maxOutputTokens: 2500, topP: 0.85 },
+        generationConfig: { temperature: 0.05, maxOutputTokens: 8192, topP: 0.85 },
         safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT",        threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HATE_SPEECH",       threshold: "BLOCK_NONE" },
